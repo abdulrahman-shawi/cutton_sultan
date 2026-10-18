@@ -1,0 +1,193 @@
+// components/customers/CustomerModal.tsx
+import { useState, type FormEvent } from 'react';
+import { AlertCircle, X } from 'lucide-react';
+import { loadOpeningDefaults, type Customer } from './types';
+
+interface CustomerModalProps {
+  mode: 'create' | 'edit';
+  initial?: Customer;
+  onClose: () => void;
+  onSave: (data: Omit<Customer, 'id' | 'createdAt'>) => void;
+}
+
+const inputClass =
+  'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
+
+export default function CustomerModal({ mode, initial, onClose, onSave }: CustomerModalProps) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [phone, setPhone] = useState(initial?.phone ?? '');
+  const [address, setAddress] = useState(initial?.address ?? '');
+  const [balanceSyp, setBalanceSyp] = useState(
+    initial ? String(initial.openingBalanceSyp) : loadOpeningDefaults().syp
+  );
+  const [balanceUsd, setBalanceUsd] = useState(
+    initial ? String(initial.openingBalanceUsd) : loadOpeningDefaults().usd
+  );
+  const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) return setError('اسم العميل مطلوب');
+    if (!phone.trim()) return setError('رقم هاتف العميل مطلوب');
+    const syp = balanceSyp.trim() === '' ? 0 : Number(balanceSyp);
+    const usd = balanceUsd.trim() === '' ? 0 : Number(balanceUsd);
+    if (Number.isNaN(syp) || Number.isNaN(usd)) {
+      return setError('يرجى إدخال أرقام صحيحة في حقول الرصيد الافتتاحي');
+    }
+    onSave({
+      name: trimmedName,
+      phone: phone.trim(),
+      address: address.trim(),
+      openingBalanceSyp: syp,
+      openingBalanceUsd: usd,
+      notes: notes.trim(),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold text-slate-900">
+            {mode === 'create' ? 'إضافة عميل جديد' : `تعديل عميل «${initial?.name}»`}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="إغلاق"
+            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+          >
+            <X className="w-5 h-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="customer-name" className="block text-sm font-medium text-slate-700 mb-1.5">
+                اسم العميل <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="customer-name"
+                type="text"
+                autoFocus
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError('');
+                }}
+                placeholder="مثال: أحمد العلي"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label htmlFor="customer-phone" className="block text-sm font-medium text-slate-700 mb-1.5">
+                رقم الهاتف <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="customer-phone"
+                type="tel"
+                dir="ltr"
+                inputMode="tel"
+                value={phone}
+                onChange={(event) => {
+                  setPhone(event.target.value);
+                  setError('');
+                }}
+                placeholder="09XXXXXXXX"
+                className={`${inputClass} text-left`}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="customer-address" className="block text-sm font-medium text-slate-700 mb-1.5">
+                العنوان / المنطقة
+              </label>
+              <input
+                id="customer-address"
+                type="text"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder="مثال: دمشق — الميدان"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label htmlFor="customer-balance-syp" className="block text-sm font-medium text-slate-700 mb-1.5">
+                الرصيد الافتتاحي — سوري
+              </label>
+              <input
+                id="customer-balance-syp"
+                type="number"
+                step="any"
+                inputMode="decimal"
+                value={balanceSyp}
+                onChange={(event) => setBalanceSyp(event.target.value)}
+                placeholder="0"
+                className={`${inputClass} text-center`}
+              />
+              <p className="text-xs text-slate-400 mt-1.5">يُعبأ تلقائياً من الإعدادات — سالب = لهذا العميل</p>
+            </div>
+            <div>
+              <label htmlFor="customer-balance-usd" className="block text-sm font-medium text-slate-700 mb-1.5">
+                الرصيد الافتتاحي — دولار
+              </label>
+              <input
+                id="customer-balance-usd"
+                type="number"
+                step="any"
+                inputMode="decimal"
+                value={balanceUsd}
+                onChange={(event) => setBalanceUsd(event.target.value)}
+                placeholder="0"
+                className={`${inputClass} text-center`}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="customer-notes" className="block text-sm font-medium text-slate-700 mb-1.5">
+                ملاحظات
+              </label>
+              <textarea
+                id="customer-notes"
+                rows={2}
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="ملاحظات عن العميل (اختياري)"
+                className={`${inputClass} resize-none`}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <p className="flex items-center gap-1.5 text-sm text-red-600">
+              <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="submit"
+              className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+            >
+              {mode === 'create' ? 'إضافة العميل' : 'حفظ التعديلات'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              إلغاء
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
