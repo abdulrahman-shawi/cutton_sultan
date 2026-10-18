@@ -8,6 +8,7 @@ import {
 import MetricCard from "../components/dashboard/MetricCard";
 import RecentInvoices from "../components/dashboard/RecentInvoices";
 import RevenueChart from "../components/dashboard/RevenueChart";
+import DemoDataButton from "../components/demo/DemoDataButton";
 
 const metrics = [
   {
@@ -104,6 +105,8 @@ export default function DashboardPage() {
       <section aria-label="الفواتير الأخيرة">
         <RecentInvoices />
       </section>
+
+      <DemoDataButton />
     </main>
   );
 }
