@@ -1,9 +1,9 @@
 // components/products/EntryDetailsModal.tsx
 import { useState } from 'react';
-import { Check, Copy, Download, X } from 'lucide-react';
+import { AlertCircle, Check, Copy, Download, X } from 'lucide-react';
 import type { Subcategory } from '../subcategories/types';
-import { loadDollarRate } from '../settings/types';
-import Barcode, { downloadBarcode } from './Barcode';
+import { SETTINGS_STORAGE_KEY, loadDollarRate } from '../settings/types';
+import Barcode, { downloadProductLabel } from './Barcode';
 import { PRODUCT_CURRENCIES, formatPrice, type Product, type ProductCurrency } from './types';
 
 interface EntryDetailsModalProps {
@@ -16,9 +16,21 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, '-');
 }
 
+function loadStoreName(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return '';
+    return (JSON.parse(raw) as { storeName?: string }).storeName ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export default function EntryDetailsModal({ product, subcategories, onClose }: EntryDetailsModalProps) {
   const dollarRate = loadDollarRate();
   const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null);
+  const [labelError, setLabelError] = useState('');
   const symbol = (currency: ProductCurrency) =>
     PRODUCT_CURRENCIES.find((option) => option.value === currency)?.symbol ?? 'ل.س';
   const subcategoryName = (id: string) =>
@@ -32,6 +44,7 @@ export default function EntryDetailsModal({ product, subcategories, onClose }: E
     try {
       await navigator.clipboard.writeText(barcode);
       setCopiedBarcode(barcode);
+      setLabelError('');
       setTimeout(() => {
         setCopiedBarcode((prev) => (prev === barcode ? null : prev));
       }, 1500);
@@ -40,8 +53,24 @@ export default function EntryDetailsModal({ product, subcategories, onClose }: E
     }
   };
 
-  const handleDownload = (barcode: string) => {
-    downloadBarcode(barcode, sanitizeFilename(`${product.name}-${barcode}`));
+  const handleDownload = (entry: Product['entries'][number]) => {
+    const isUsd = entry.currency === 'USD';
+    if (isUsd && dollarRate <= 0) {
+      setLabelError('حدد سعر صرف الدولار من صفحة الإعدادات أولاً ليتمكن الملصق من عرض السعر بالسوري');
+      return;
+    }
+    const priceSyp = isUsd ? entry.salePrice * dollarRate : entry.salePrice;
+    const variantLabel = [entry.color, entry.size].filter(Boolean).join(' / ');
+    const pieceName = [product.name, variantLabel].filter(Boolean).join(' — ');
+    const storeName = loadStoreName();
+    const params = new URLSearchParams({ n: pieceName, p: String(Math.round(priceSyp)) });
+    if (storeName) params.set('st', storeName);
+    const pageUrl = `${window.location.origin}/p?${params.toString()}`;
+    downloadProductLabel(
+      { barcode: entry.barcode, pieceName, priceSyp, pageUrl },
+      sanitizeFilename(`${product.name}-${entry.barcode}`)
+    );
+    setLabelError('');
   };
 
   return (
@@ -158,9 +187,9 @@ export default function EntryDetailsModal({ product, subcategories, onClose }: E
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDownload(entry.barcode)}
-                            title="تنزيل الباركود PNG"
-                            aria-label={`تنزيل باركود ${entry.barcode}`}
+                            onClick={() => handleDownload(entry)}
+                            title="تنزيل ملصق PNG (اسم القطعة + السعر بالسوري + QR)"
+                            aria-label={`تنزيل ملصق باركود ${entry.barcode}`}
                             className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors"
                           >
                             <Download className="w-3.5 h-3.5" aria-hidden="true" />
@@ -178,9 +207,16 @@ export default function EntryDetailsModal({ product, subcategories, onClose }: E
             <span className="mx-2 text-slate-300">|</span>
             إجمالي الكمية: <strong className="text-slate-700">{totalQuantity}</strong> قطعة
             <span className="mx-2 text-slate-300">|</span>
-            استخدم أزرار النسخ والتنزيل أسفل كل باركود
+            زر التنزيل يحفظ ملصقاً كاملاً: اسم القطعة والسعر بالسوري ورمز QR للعملاء
           </div>
         </div>
+
+        {labelError && (
+          <p className="flex items-center gap-1.5 text-xs text-amber-600 mt-3">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            {labelError}
+          </p>
+        )}
       </div>
     </div>
   );

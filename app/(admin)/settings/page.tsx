@@ -1,4 +1,4 @@
-import SettingsForm from '../components/settings/SettingsForm';
+import SettingsForm from '../../components/settings/SettingsForm';
 
 export const metadata = {
   title: 'الإعدادات | نظام إدارة العملاء',

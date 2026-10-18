@@ -1,4 +1,4 @@
-import ProductsManager from '../components/products/ProductsManager';
+import ProductsManager from '../../components/products/ProductsManager';
 
 export const metadata = {
   title: 'المنتجات | نظام إدارة العملاء',

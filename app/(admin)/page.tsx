@@ -5,9 +5,9 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import MetricCard from "./components/dashboard/MetricCard";
-import RecentInvoices from "./components/dashboard/RecentInvoices";
-import RevenueChart from "./components/dashboard/RevenueChart";
+import MetricCard from "../components/dashboard/MetricCard";
+import RecentInvoices from "../components/dashboard/RecentInvoices";
+import RevenueChart from "../components/dashboard/RevenueChart";
 
 const metrics = [
   {

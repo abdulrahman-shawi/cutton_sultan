@@ -1,4 +1,4 @@
-import CategoriesManager from '../components/categories/CategoriesManager';
+import CategoriesManager from '../../components/categories/CategoriesManager';
 
 export const metadata = {
   title: 'الأقسام | نظام إدارة العملاء',

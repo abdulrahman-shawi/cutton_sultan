@@ -1,5 +1,6 @@
 // components/products/Barcode.tsx
 import { useEffect, useRef } from 'react';
+import { formatPrice } from './types';
 
 const L_PATTERNS: Record<string, string> = {
   '0': '0001101', '1': '0011001', '2': '0010011', '3': '0111101',
@@ -94,18 +95,89 @@ export function drawBarcode(canvas: HTMLCanvasElement, value: string, multiplier
   return true;
 }
 
-// تنزيل الباركود كصورة PNG بجودة عالية مناسبة للطباعة
-export function downloadBarcode(value: string, filename: string): boolean {
-  if (typeof document === 'undefined') return false;
-  const canvas = document.createElement('canvas');
-  if (!drawBarcode(canvas, value, 4)) return false;
-  const link = document.createElement('a');
-  link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
-  link.href = canvas.toDataURL('image/png');
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  return true;
+export interface ProductLabelOptions {
+  barcode: string;
+  pieceName: string;
+  priceSyp: number;
+  pageUrl: string;
+}
+
+// تنزيل ملصق كامل: اسم القطعة + باركود + السعر بالسوري + QR لصفحة العملاء
+export function downloadProductLabel(options: ProductLabelOptions, filename: string): void {
+  if (typeof document === 'undefined') return;
+  const multiplier = 3;
+  const barcodeCanvas = document.createElement('canvas');
+  if (!drawBarcode(barcodeCanvas, options.barcode, multiplier)) return;
+
+  const qrSize = 170;
+  const pad = 28;
+  const nameHeight = 44;
+  const priceHeight = 54;
+  const width = pad + qrSize + 20 + barcodeCanvas.width + pad;
+  const height = pad + nameHeight + barcodeCanvas.height + priceHeight + pad;
+
+  const exportLabel = (canvas: HTMLCanvasElement) => {
+    const link = document.createElement('a');
+    link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const compose = (qrImage: HTMLImageElement | null) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.direction = 'rtl';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    let fontSize = 26;
+    ctx.font = `bold ${fontSize}px Arial`;
+    while (ctx.measureText(options.pieceName).width > width - pad * 2 && fontSize > 14) {
+      fontSize -= 2;
+      ctx.font = `bold ${fontSize}px Arial`;
+    }
+    ctx.fillStyle = '#0f172a';
+    ctx.fillText(options.pieceName, width / 2, pad + nameHeight / 2);
+
+    const barcodeX = width - pad - barcodeCanvas.width;
+    const barcodeY = pad + nameHeight;
+    ctx.drawImage(barcodeCanvas, barcodeX, barcodeY);
+
+    ctx.font = 'bold 30px Arial';
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillText(
+      `${formatPrice(options.priceSyp)} ل.س`,
+      barcodeX + barcodeCanvas.width / 2,
+      barcodeY + barcodeCanvas.height + priceHeight / 2 - 2
+    );
+
+    if (qrImage) {
+      const qrX = pad;
+      const qrY = barcodeY;
+      ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('امسح لعرض السعر', qrX + qrSize / 2, qrY + qrSize + 16);
+    }
+
+    exportLabel(canvas);
+  };
+
+  const qrImage = new Image();
+  qrImage.crossOrigin = 'anonymous';
+  qrImage.onload = () => compose(qrImage);
+  qrImage.onerror = () => compose(null);
+  qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=0&data=${encodeURIComponent(
+    options.pageUrl
+  )}`;
 }
 
 interface BarcodeProps {
