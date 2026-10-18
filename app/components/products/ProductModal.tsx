@@ -3,15 +3,9 @@ import { useState, type FormEvent } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import type { Category } from '../categories/types';
 import type { Subcategory } from '../subcategories/types';
-import VariantsBuilder from './VariantsBuilder';
-import {
-  PRODUCT_CURRENCIES,
-  PRODUCT_STATUSES,
-  type Product,
-  type ProductCurrency,
-  type ProductStatus,
-  type VariantDraft,
-} from './types';
+import { SETTINGS_STORAGE_KEY } from '../settings/types';
+import EntryTabs from './EntryTabs';
+import { PRODUCT_STATUSES, type EntryDraft, type Product, type ProductStatus } from './types';
 
 interface ProductModalProps {
   mode: 'create' | 'edit';
@@ -20,19 +14,23 @@ interface ProductModalProps {
   subcategories: Subcategory[];
   defaultCategoryId: string | null;
   onClose: () => void;
-  onSave: (data: {
-    name: string;
-    modelNumber: string;
-    categoryId: string;
-    subcategoryId: string;
-    status: ProductStatus;
-    currency: ProductCurrency;
-    variants: { color: string; size: string; quantity: number; wholesalePrice: number; salePrice: number }[];
-  }) => void;
+  onSave: (data: Omit<Product, 'id'>) => void;
 }
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
+
+function loadDollarRate(): number {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return 0;
+    const rate = Number((JSON.parse(raw) as { dollarRate?: string }).dollarRate);
+    return Number.isFinite(rate) && rate > 0 ? rate : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export default function ProductModal({
   mode,
@@ -48,31 +46,24 @@ export default function ProductModal({
   const [categoryId, setCategoryId] = useState(
     initial?.categoryId ?? defaultCategoryId ?? categories[0]?.id ?? ''
   );
-  const [subcategoryId, setSubcategoryId] = useState(initial?.subcategoryId ?? '');
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? 'متوفر');
-  const [currency, setCurrency] = useState<ProductCurrency>(initial?.currency ?? 'SYP');
-  const [variants, setVariants] = useState<VariantDraft[]>(() =>
-    (initial?.variants ?? []).map((variant) => ({
-      color: variant.color,
-      size: variant.size,
-      quantity: String(variant.quantity),
-      wholesalePrice: String(variant.wholesalePrice),
-      salePrice: String(variant.salePrice),
+  const [entries, setEntries] = useState<EntryDraft[]>(() =>
+    (initial?.entries ?? []).map((entry) => ({
+      color: entry.color,
+      size: entry.size,
+      subcategoryId: entry.subcategoryId,
+      currency: entry.currency,
+      quantity: String(entry.quantity),
+      wholesalePrice: String(entry.wholesalePrice),
+      salePrice: String(entry.salePrice),
     }))
   );
   const [error, setError] = useState('');
+  const [dollarRate] = useState(loadDollarRate);
 
   const availableSubcategories = subcategories.filter(
     (subcategory) => subcategory.categoryId === categoryId
   );
-
-  const handleCategoryChange = (nextCategoryId: string) => {
-    setCategoryId(nextCategoryId);
-    setError('');
-    if (!availableSubcategories.some((subcategory) => subcategory.id === subcategoryId)) {
-      setSubcategoryId('');
-    }
-  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -80,26 +71,32 @@ export default function ProductModal({
     if (!trimmedName) return setError('اسم المنتج مطلوب');
     if (!modelNumber.trim()) return setError('رقم موديل المنتج مطلوب');
     if (!categoryId) return setError('يرجى اختيار القسم الرئيسي');
-    if (!subcategoryId) return setError('يرجى اختيار القسم الفرعي (الشركة)');
-    if (variants.length === 0)
-      return setError('أضف توليفة واحدة على الأقل (لون / مقاس) مع الكمية والأسعار');
+    if (entries.length === 0) return setError('أضف تفصيلة واحدة على الأقل (لون / مقاس)');
 
-    for (const variant of variants) {
-      if (
-        variant.quantity.trim() === '' ||
-        variant.wholesalePrice.trim() === '' ||
-        variant.salePrice.trim() === ''
-      ) {
-        return setError('يرجى تعبئة الكمية وسعر الجملة وسعر المبيع في جميع التوليفات');
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index];
+      const label = `التفصيلة رقم ${index + 1}`;
+      if (!entry.color.trim() && !entry.size.trim()) {
+        return setError(`أدخل لوناً أو مقاساً في ${label}`);
       }
-      const quantity = Number(variant.quantity);
-      const wholesalePrice = Number(variant.wholesalePrice);
-      const salePrice = Number(variant.salePrice);
+      if (!entry.subcategoryId) {
+        return setError(`اختر القسم الفرعي (الشركة) في ${label}`);
+      }
+      if (
+        entry.quantity.trim() === '' ||
+        entry.wholesalePrice.trim() === '' ||
+        entry.salePrice.trim() === ''
+      ) {
+        return setError(`عبّئ الكمية وسعر الجملة وسعر المفرق في ${label}`);
+      }
+      const quantity = Number(entry.quantity);
+      const wholesalePrice = Number(entry.wholesalePrice);
+      const salePrice = Number(entry.salePrice);
       if ([quantity, wholesalePrice, salePrice].some((value) => Number.isNaN(value) || value < 0)) {
-        return setError('يرجى إدخال أرقام صحيحة في حقول الكمية والأسعار');
+        return setError(`أدخل أرقاماً صحيحة في حقول ${label}`);
       }
       if (!Number.isInteger(quantity)) {
-        return setError('الكمية يجب أن تكون رقماً صحيحاً');
+        return setError(`الكمية في ${label} يجب أن تكون رقماً صحيحاً`);
       }
     }
 
@@ -107,15 +104,15 @@ export default function ProductModal({
       name: trimmedName,
       modelNumber: modelNumber.trim(),
       categoryId,
-      subcategoryId,
       status,
-      currency,
-      variants: variants.map((variant) => ({
-        color: variant.color,
-        size: variant.size,
-        quantity: Number(variant.quantity),
-        wholesalePrice: Number(variant.wholesalePrice),
-        salePrice: Number(variant.salePrice),
+      entries: entries.map((entry) => ({
+        color: entry.color.trim(),
+        size: entry.size.trim(),
+        subcategoryId: entry.subcategoryId,
+        currency: entry.currency,
+        quantity: Number(entry.quantity),
+        wholesalePrice: Number(entry.wholesalePrice),
+        salePrice: Number(entry.salePrice),
       })),
     });
   };
@@ -190,7 +187,7 @@ export default function ProductModal({
               <select
                 id="product-category"
                 value={categoryId}
-                onChange={(event) => handleCategoryChange(event.target.value)}
+                onChange={(event) => setCategoryId(event.target.value)}
                 className={`${inputClass} bg-white cursor-pointer`}
               >
                 {categories.map((category) => (
@@ -200,37 +197,6 @@ export default function ProductModal({
                 ))}
               </select>
             </div>
-            <div>
-              <label htmlFor="product-subcategory" className="block text-sm font-medium text-slate-700 mb-1.5">
-                القسم الفرعي (الشركة) <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="product-subcategory"
-                value={subcategoryId}
-                onChange={(event) => {
-                  setSubcategoryId(event.target.value);
-                  setError('');
-                }}
-                className={`${inputClass} bg-white cursor-pointer`}
-              >
-                <option value="" disabled>
-                  اختر الشركة
-                </option>
-                {availableSubcategories.map((subcategory) => (
-                  <option key={subcategory.id} value={subcategory.id}>
-                    {subcategory.name}
-                  </option>
-                ))}
-              </select>
-              {categoryId && availableSubcategories.length === 0 && (
-                <p className="text-xs text-amber-600 mt-1.5">
-                  لا توجد أقسام فرعية لهذا القسم — أضفها من صفحة الأقسام الفرعية أولاً.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <span className="block text-sm font-medium text-slate-700 mb-1.5">حالة المنتج</span>
               <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
@@ -246,31 +212,18 @@ export default function ProductModal({
                 ))}
               </div>
             </div>
-            <div>
-              <span className="block text-sm font-medium text-slate-700 mb-1.5">عملة الأسعار</span>
-              <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-                {PRODUCT_CURRENCIES.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setCurrency(option.value)}
-                    className={segmentedClass(currency === option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5">
-                بعض منتجاتك سعريها بالسوري وبعضها بالدولار — حدد العملة لكل منتج
-              </p>
-            </div>
           </div>
 
           <div>
             <span className="block text-sm font-medium text-slate-700 mb-1.5">
-              الألوان والمقاسات والأسعار <span className="text-red-500">*</span>
+              التفصيلات (لون / مقاس / شركة / أسعار) <span className="text-red-500">*</span>
             </span>
-            <VariantsBuilder variants={variants} currency={currency} onChange={setVariants} />
+            <EntryTabs
+              entries={entries}
+              subcategories={availableSubcategories}
+              dollarRate={dollarRate}
+              onChange={setEntries}
+            />
           </div>
 
           {error && (

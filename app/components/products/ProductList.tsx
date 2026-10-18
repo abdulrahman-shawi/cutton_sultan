@@ -2,7 +2,7 @@
 import { Package, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Category } from '../categories/types';
 import type { Subcategory } from '../subcategories/types';
-import { PRODUCT_CURRENCIES, type Product } from './types';
+import type { Product } from './types';
 
 interface ProductListProps {
   products: Product[];
@@ -27,6 +27,15 @@ function StatusBadge({ status }: { status: Product['status'] }) {
   );
 }
 
+function unique(values: string[]): string[] {
+  const seen: Record<string, boolean> = {};
+  return values.filter((value) => {
+    if (seen[value]) return false;
+    seen[value] = true;
+    return true;
+  });
+}
+
 export default function ProductList({
   products,
   categories,
@@ -41,7 +50,7 @@ export default function ProductList({
         <Package className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
         <p className="font-semibold text-slate-700 mb-1">لا توجد منتجات بعد</p>
         <p className="text-sm text-slate-400 mb-5">
-          أضف منتجاتك مع توليفات الألوان والمقاسات وأسعار الجملة والمبيع.
+          أضف منتجاتك مع تفصيلات الألوان والمقاسات وأسعار الجملة والمفرق.
         </p>
         <button
           type="button"
@@ -57,9 +66,7 @@ export default function ProductList({
 
   const categoryName = (id: string) => categories.find((category) => category.id === id)?.name ?? '—';
   const subcategoryName = (id: string) =>
-    subcategories.find((subcategory) => subcategory.id === id)?.name ?? '—';
-  const currencySymbol = (value: Product['currency']) =>
-    PRODUCT_CURRENCIES.find((option) => option.value === value)?.symbol ?? 'ل.س';
+    subcategories.find((subcategory) => subcategory.id === id)?.name ?? '';
 
   const gridTemplate = 'grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)_150px_110px_96px]';
 
@@ -70,15 +77,25 @@ export default function ProductList({
           <div className={`grid ${gridTemplate} items-center gap-4 px-5 py-3.5 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-400`}>
             <span>المنتج</span>
             <span>القسم</span>
-            <span>التوليفات</span>
+            <span>التفصيلات</span>
             <span>الحالة</span>
             <span className="text-center">إجراءات</span>
           </div>
           <ul className="divide-y divide-slate-100">
             {products.map((product) => {
-              const totalQuantity = product.variants.reduce((sum, variant) => sum + variant.quantity, 0);
-              const minSale = Math.min(...product.variants.map((variant) => variant.salePrice));
-              const symbol = currencySymbol(product.currency);
+              const totalQuantity = product.entries.reduce((sum, entry) => sum + entry.quantity, 0);
+              const companies = unique(
+                product.entries.map((entry) => subcategoryName(entry.subcategoryId)).filter(Boolean)
+              );
+              const sypPrices = product.entries
+                .filter((entry) => entry.currency === 'SYP')
+                .map((entry) => entry.salePrice);
+              const usdPrices = product.entries
+                .filter((entry) => entry.currency === 'USD')
+                .map((entry) => entry.salePrice);
+              const priceParts: string[] = [];
+              if (sypPrices.length > 0) priceParts.push(`${Math.min(...sypPrices)} ل.س`);
+              if (usdPrices.length > 0) priceParts.push(`${Math.min(...usdPrices)} $`);
               return (
                 <li
                   key={product.id}
@@ -102,16 +119,22 @@ export default function ProductList({
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-700 truncate">{categoryName(product.categoryId)}</p>
-                    <p className="text-xs text-slate-400 truncate">{subcategoryName(product.subcategoryId)}</p>
+                    <p className="text-sm font-medium text-slate-700 truncate">
+                      {categoryName(product.categoryId)}
+                    </p>
+                    <p className="text-xs text-slate-400 truncate">
+                      {companies.length > 0 ? companies.join(' · ') : 'بدون شركة'}
+                    </p>
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-700">
-                      {product.variants.length} توليفة · {totalQuantity} قطعة
+                      {product.entries.length} تفصيلة · {totalQuantity} قطعة
                     </p>
-                    <p className="text-xs text-slate-400 truncate">
-                      يبدأ المبيع من {minSale} {symbol}
-                    </p>
+                    {priceParts.length > 0 && (
+                      <p className="text-xs text-slate-400 truncate">
+                        يبدأ المفرق من {priceParts.join(' · ')}
+                      </p>
+                    )}
                   </div>
                   <StatusBadge status={product.status} />
                   <div className="flex items-center justify-center gap-1">

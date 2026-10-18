@@ -2,17 +2,21 @@
 export type ProductStatus = 'متوفر' | 'غير متوفر';
 export type ProductCurrency = 'SYP' | 'USD';
 
-export interface ProductVariant {
+export interface ProductEntry {
   color: string;
   size: string;
+  subcategoryId: string;
+  currency: ProductCurrency;
   quantity: number;
   wholesalePrice: number;
   salePrice: number;
 }
 
-export interface VariantDraft {
+export interface EntryDraft {
   color: string;
   size: string;
+  subcategoryId: string;
+  currency: ProductCurrency;
   quantity: string;
   wholesalePrice: string;
   salePrice: string;
@@ -23,17 +27,15 @@ export interface Product {
   name: string;
   modelNumber: string;
   categoryId: string;
-  subcategoryId: string;
   status: ProductStatus;
-  currency: ProductCurrency;
-  variants: ProductVariant[];
+  entries: ProductEntry[];
 }
 
 export const PRODUCT_STATUSES: ProductStatus[] = ['متوفر', 'غير متوفر'];
 
 export const PRODUCT_CURRENCIES: { value: ProductCurrency; label: string; symbol: string }[] = [
-  { value: 'SYP', label: 'ليرة سورية', symbol: 'ل.س' },
-  { value: 'USD', label: 'دولار أمريكي', symbol: '$' },
+  { value: 'SYP', label: 'سوري', symbol: 'ل.س' },
+  { value: 'USD', label: 'دولار', symbol: '$' },
 ];
 
 export const COLOR_SUGGESTIONS = [
