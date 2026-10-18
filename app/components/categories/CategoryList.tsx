@@ -44,12 +44,14 @@ export default function CategoryList({ categories, onAdd, onEdit, onDelete }: Ca
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="grid grid-cols-[minmax(0,1fr)_120px_96px] items-center gap-4 px-5 py-3.5 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-400">
-        <span>القسم</span>
-        <span>الحالة</span>
-        <span className="text-center">إجراءات</span>
-      </div>
-      <ul className="divide-y divide-slate-100">
+      <div className="overflow-x-auto">
+        <div className="min-w-[560px]">
+          <div className="grid grid-cols-[minmax(0,1fr)_120px_96px] items-center gap-4 px-5 py-3.5 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-400">
+            <span>القسم</span>
+            <span>الحالة</span>
+            <span className="text-center">إجراءات</span>
+          </div>
+          <ul className="divide-y divide-slate-100">
         {categories.map((category) => (
           <li
             key={category.id}
@@ -93,7 +95,9 @@ export default function CategoryList({ categories, onAdd, onEdit, onDelete }: Ca
             </div>
           </li>
         ))}
-      </ul>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }

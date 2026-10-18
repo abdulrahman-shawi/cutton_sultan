@@ -1,9 +1,11 @@
-// p/PriceDisplay.tsx — صفحة عامة لعرض سعر القطعة عند مسح رمز QR على الملصق
+// p/PriceDisplay.tsx — صفحة عامة لعرض سعر القطعة عند مسح الرمز على الملصق
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { PackageSearch } from 'lucide-react';
-import { formatPrice } from '../components/products/types';
+import CameraScanner from './CameraScanner';
+import { PRODUCTS_STORAGE_KEY, formatPrice, type Product } from '../components/products/types';
+import { loadDollarRate } from '../components/settings/types';
 
 interface PriceInfo {
   name: string;
@@ -11,9 +13,46 @@ interface PriceInfo {
   store: string;
 }
 
+function loadStoreName(): string {
+  try {
+    const raw = window.localStorage.getItem('sultan_store_settings');
+    if (!raw) return '';
+    return (JSON.parse(raw) as { storeName?: string }).storeName ?? '';
+  } catch {
+    return '';
+  }
+}
+
+// بحث محلي عن الباركود في منتجات الجهاز (يفيد المالك عند مسح الباركود مباشرة)
+function lookupBarcode(barcode: string): PriceInfo | null {
+  try {
+    const raw = window.localStorage.getItem(PRODUCTS_STORAGE_KEY);
+    if (!raw) return null;
+    const products = JSON.parse(raw) as Product[];
+    for (const product of products) {
+      const entry = product.entries.find((item) => item.barcode === barcode);
+      if (entry) {
+        const rate = loadDollarRate();
+        const priceSyp =
+          entry.currency === 'USD' && rate > 0 ? entry.salePrice * rate : entry.salePrice;
+        const variant = [entry.color, entry.size].filter(Boolean).join(' / ');
+        return {
+          name: [product.name, variant].filter(Boolean).join(' — '),
+          price: priceSyp,
+          store: loadStoreName(),
+        };
+      }
+    }
+  } catch {
+    // تجاهل أخطاء القراءة
+  }
+  return null;
+}
+
 export default function PriceDisplay() {
   const [info, setInfo] = useState<PriceInfo | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [scanError, setScanError] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -24,6 +63,24 @@ export default function PriceDisplay() {
       setInfo({ name, price, store });
     }
     setLoaded(true);
+  }, []);
+
+  const handleScanned = useCallback((value: string) => {
+    setScanError('');
+    if (/^https?:\/\//.test(value)) {
+      window.location.href = value;
+      return;
+    }
+    if (/^\d{13}$/.test(value)) {
+      const found = lookupBarcode(value);
+      if (found) {
+        setInfo(found);
+      } else {
+        setScanError('هذا الباركود غير مسجل على هذا الجهاز — امسح رمز QR الموجود على الملصق');
+      }
+      return;
+    }
+    setScanError('تعذر التعرف على الرمز الممسوح');
   }, []);
 
   return (
@@ -46,6 +103,8 @@ export default function PriceDisplay() {
               </p>
             </div>
             <p className="text-xs text-slate-400">جميع الأسعار بالليرة السورية</p>
+            <CameraScanner onDetected={handleScanned} />
+            {scanError && <p className="text-xs text-amber-600">{scanError}</p>}
           </div>
         ) : (
           loaded && (
@@ -55,9 +114,11 @@ export default function PriceDisplay() {
               </div>
               <h1 className="text-xl font-bold text-slate-900">عرض أسعار المنتجات</h1>
               <p className="text-sm text-slate-500 leading-relaxed">
-                امسح رمز QR الموجود على ملصق المنتج بكاميرا هاتفك لعرض اسم القطعة وسعرها
+                امسح رمز QR أو الباركود الموجود على ملصق المنتج لعرض اسم القطعة وسعرها
                 بالليرة السورية.
               </p>
+              <CameraScanner onDetected={handleScanned} />
+              {scanError && <p className="text-xs text-amber-600">{scanError}</p>}
             </div>
           )
         )}

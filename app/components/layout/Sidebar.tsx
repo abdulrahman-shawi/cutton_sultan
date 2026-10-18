@@ -2,6 +2,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { X } from 'lucide-react';
 
 const navItems = [
   { name: 'التحليلات (الداشبورد)', href: '/', icon: 'dashboard' },
@@ -25,44 +26,73 @@ const icons = {
   settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.6-1.4-2.4L7.3 15a8 8 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.6a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.6 1.4 2.4-1.4 1.1a8 8 0 0 1-.1 2Z" /></>,
 };
 
-export default function Sidebar() {
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col border-l border-slate-800 shrink-0">
-      <div className="p-6 text-xl font-bold text-white border-b border-slate-800">
-        نظام <span className="text-blue-500">CRM</span>
-      </div>
-      <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-medium text-sm ${
-                isActive
-                  ? 'bg-blue-600 text-white'
-                  : 'hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <svg
-                aria-hidden="true"
-                className="w-5 h-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-[2px] lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`fixed lg:static inset-y-0 right-0 z-40 w-64 bg-slate-900 text-slate-300 flex flex-col border-l border-slate-800 shrink-0 transition-transform duration-300 ease-in-out ${
+          open ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="p-6 text-xl font-bold text-white border-b border-slate-800 flex items-center justify-between">
+          <span>
+            نظام <span className="text-blue-500">CRM</span>
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="إغلاق القائمة"
+            className="lg:hidden p-1 text-slate-400 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" aria-hidden="true" />
+          </button>
+        </div>
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-medium text-sm ${
+                  isActive
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-slate-800 hover:text-white'
+                }`}
               >
-                {icons[item.icon]}
-              </svg>
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
+                <svg
+                  aria-hidden="true"
+                  className="w-5 h-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {icons[item.icon]}
+                </svg>
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+    </>
   );
 }
