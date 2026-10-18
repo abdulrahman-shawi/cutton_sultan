@@ -3,11 +3,12 @@ import { AlertTriangle } from 'lucide-react';
 
 interface ConfirmDialogProps {
   categoryName: string;
+  itemLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export default function ConfirmDialog({ categoryName, onConfirm, onCancel }: ConfirmDialogProps) {
+export default function ConfirmDialog({ categoryName, itemLabel = 'القسم', onConfirm, onCancel }: ConfirmDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={onCancel} />
@@ -19,9 +20,9 @@ export default function ConfirmDialog({ categoryName, onConfirm, onCancel }: Con
         <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 grid place-items-center mb-4">
           <AlertTriangle className="w-6 h-6" aria-hidden="true" />
         </div>
-        <h2 className="text-lg font-bold text-slate-900 mb-1.5">حذف القسم</h2>
+        <h2 className="text-lg font-bold text-slate-900 mb-1.5">حذف {itemLabel}</h2>
         <p className="text-sm text-slate-500 leading-relaxed mb-5">
-          هل أنت متأكد من حذف قسم «{categoryName}»؟ لا يمكن التراجع عن هذا الإجراء.
+          هل أنت متأكد من حذف {itemLabel} «{categoryName}»؟ لا يمكن التراجع عن هذا الإجراء.
         </p>
         <div className="flex items-center gap-3">
           <button

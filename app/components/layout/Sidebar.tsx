@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const navItems = [
   { name: 'التحليلات (الداشبورد)', href: '/', icon: 'dashboard' },
   { name: 'الأقسام', href: '/departments', icon: 'departments' },
+  { name: 'الأقسام الفرعية', href: '/subcategories', icon: 'subcategories' },
   { name: 'الفواتير', href: '/invoices', icon: 'invoices' },
   { name: 'العملاء', href: '/customers', icon: 'customers' },
   { name: 'الموردين', href: '/suppliers', icon: 'suppliers' },
@@ -15,6 +16,7 @@ const navItems = [
 const icons = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
   departments: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5M3 16l9 5 9-5" /></>,
+  subcategories: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /></>,
   invoices: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h8" /></>,
   customers: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
   suppliers: <><path d="M10 17h4V5H2v12h3" /><path d="M14 9h4l4 4v4h-2M14 17h-4" /><circle cx="7.5" cy="17.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
