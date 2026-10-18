@@ -1,6 +1,9 @@
 // components/suppliers/SupplierModal.tsx
 import { useState, type FormEvent } from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, Check, X } from 'lucide-react';
+import { CATEGORIES_STORAGE_KEY, seedCategories, type Category } from '../categories/types';
+import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
+import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import { loadOpeningDefaults } from '../customers/types';
 import type { Supplier } from './types';
 
@@ -14,10 +17,63 @@ interface SupplierModalProps {
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
+function loadCategories(): Category[] {
+  if (typeof window === 'undefined') return seedCategories;
+  try {
+    const raw = window.localStorage.getItem(CATEGORIES_STORAGE_KEY);
+    if (!raw) return seedCategories;
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Category[]) : seedCategories;
+  } catch {
+    return seedCategories;
+  }
+}
+
+function loadSubcategories(): Subcategory[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(SUBCATEGORIES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Subcategory[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadProducts(): Product[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(PRODUCTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Product[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function unique(values: string[]): string[] {
+  const seen: Record<string, boolean> = {};
+  return values.filter((value) => {
+    if (seen[value]) return false;
+    seen[value] = true;
+    return true;
+  });
+}
+
 export default function SupplierModal({ mode, initial, onClose, onSave }: SupplierModalProps) {
+  const [categories] = useState<Category[]>(loadCategories);
+  const [subcategories] = useState<Subcategory[]>(loadSubcategories);
+  const [products] = useState<Product[]>(loadProducts);
   const [name, setName] = useState(initial?.name ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [goods, setGoods] = useState(initial?.goods ?? '');
+  const [selectedSubcategoryIds, setSelectedSubcategoryIds] = useState<string[]>(
+    initial?.subcategoryIds ?? []
+  );
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>(
+    initial?.productIds ?? []
+  );
   const [balanceSyp, setBalanceSyp] = useState(
     initial ? String(initial.openingBalanceSyp) : loadOpeningDefaults().syp
   );
@@ -26,6 +82,46 @@ export default function SupplierModal({ mode, initial, onClose, onSave }: Suppli
   );
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [error, setError] = useState('');
+
+  // الأقسام الفرعية المختارة + أي قسم فرعي مشتق من المنتجات المختارة (لضمان ظهورها عند التعديل)
+  const effectiveSubcategoryIds = unique([
+    ...selectedSubcategoryIds,
+    ...products
+      .filter((product) => selectedProductIds.includes(product.id))
+      .flatMap((product) => product.entries.map((entry) => entry.subcategoryId)),
+  ]);
+
+  const filteredProducts = products.filter((product) =>
+    product.entries.some((entry) => effectiveSubcategoryIds.includes(entry.subcategoryId))
+  );
+
+  const allFilteredSelected =
+    filteredProducts.length > 0 &&
+    filteredProducts.every((product) => selectedProductIds.includes(product.id));
+
+  const categoryName = (id: string) =>
+    categories.find((category) => category.id === id)?.name ?? '';
+
+  const toggleSubcategory = (id: string) => {
+    setSelectedSubcategoryIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleProduct = (id: string) => {
+    setSelectedProductIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const filteredIds = filteredProducts.map((product) => product.id);
+    if (allFilteredSelected) {
+      setSelectedProductIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
+    } else {
+      setSelectedProductIds((prev) => unique([...prev, ...filteredIds]));
+    }
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -39,7 +135,8 @@ export default function SupplierModal({ mode, initial, onClose, onSave }: Suppli
     onSave({
       name: trimmedName,
       phone: phone.trim(),
-      goods: goods.trim(),
+      subcategoryIds: selectedSubcategoryIds,
+      productIds: selectedProductIds,
       openingBalanceSyp: syp,
       openingBalanceUsd: usd,
       notes: notes.trim(),
@@ -52,7 +149,7 @@ export default function SupplierModal({ mode, initial, onClose, onSave }: Suppli
       <div
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6"
+        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6"
       >
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-slate-900">
@@ -102,19 +199,109 @@ export default function SupplierModal({ mode, initial, onClose, onSave }: Suppli
                 className={`${inputClass} text-left`}
               />
             </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="supplier-goods" className="block text-sm font-medium text-slate-700 mb-1.5">
-                البضاعة المتعامل بها
-              </label>
-              <input
-                id="supplier-goods"
-                type="text"
-                value={goods}
-                onChange={(event) => setGoods(event.target.value)}
-                placeholder="مثال: بشاكير، أقمشة أطفال"
-                className={inputClass}
-              />
-            </div>
+          </div>
+
+          <div>
+            <span className="block text-sm font-medium text-slate-700 mb-1.5">
+              البضاعة المتعامل بها
+              {selectedProductIds.length > 0 && (
+                <span className="text-xs font-normal text-slate-400">
+                  {' '}
+                  ({selectedProductIds.length} منتج مختار)
+                </span>
+              )}
+            </span>
+
+            <p className="text-xs text-slate-400 mb-2">اختر الأقسام الفرعية (الشركات) أولاً:</p>
+            {subcategories.length === 0 ? (
+              <p className="text-xs text-amber-600 rounded-lg border border-dashed border-amber-200 px-3 py-2.5">
+                لا توجد أقسام فرعية بعد — أضفها من صفحة الأقسام الفرعية أولاً.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {subcategories.map((subcategory) => {
+                  const isSelected = selectedSubcategoryIds.includes(subcategory.id);
+                  const label = categoryName(subcategory.categoryId)
+                    ? `${categoryName(subcategory.categoryId)} · ${subcategory.name}`
+                    : subcategory.name;
+                  return (
+                    <button
+                      key={subcategory.id}
+                      type="button"
+                      onClick={() => toggleSubcategory(subcategory.id)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        isSelected
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {effectiveSubcategoryIds.length > 0 && (
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-slate-400">
+                    {filteredProducts.length} منتجاً ضمن الأقسام المختارة
+                  </span>
+                  {filteredProducts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      {allFilteredSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+                    </button>
+                  )}
+                </div>
+                {filteredProducts.length === 0 ? (
+                  <p className="px-4 py-4 text-center text-xs text-slate-400">
+                    لا توجد منتجات مضافة ضمن هذه الأقسام الفرعية بعد
+                  </p>
+                ) : (
+                  <ul className="max-h-52 overflow-y-auto divide-y divide-slate-100">
+                    {filteredProducts.map((product) => {
+                      const isSelected = selectedProductIds.includes(product.id);
+                      return (
+                        <li
+                          key={product.id}
+                          role="checkbox"
+                          aria-checked={isSelected}
+                          onClick={() => toggleProduct(product.id)}
+                          className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                            isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <span
+                            className={`w-5 h-5 rounded-md border grid place-items-center shrink-0 transition-colors ${
+                              isSelected
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'border-slate-300 text-transparent'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-800 truncate">{product.name}</p>
+                            <p className="text-xs text-slate-400">
+                              موديل: <span dir="ltr" className="inline-block">{product.modelNumber}</span>
+                              {' · '}{product.entries.length} تفصيلة
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="supplier-balance-syp" className="block text-sm font-medium text-slate-700 mb-1.5">
                 الرصيد الافتتاحي — سوري

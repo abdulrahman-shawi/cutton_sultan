@@ -3,7 +3,8 @@ export interface Supplier {
   id: string;
   name: string;
   phone: string;
-  goods: string;
+  subcategoryIds: string[];
+  productIds: string[];
   openingBalanceSyp: number;
   openingBalanceUsd: number;
   notes: string;

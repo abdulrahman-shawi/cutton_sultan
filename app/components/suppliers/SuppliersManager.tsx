@@ -6,9 +6,24 @@ import { Check, Plus, Search } from 'lucide-react';
 import SupplierList from './SupplierList';
 import SupplierModal from './SupplierModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import { SUPPLIERS_STORAGE_KEY, type Supplier } from './types';
 
 type ModalState = { mode: 'create' } | { mode: 'edit'; supplier: Supplier } | null;
+
+function loadProducts(): Product[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(PRODUCTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Product[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+type LegacySupplier = Supplier & { goods?: string };
 
 function loadSuppliers(): Supplier[] {
   if (typeof window === 'undefined') return [];
@@ -16,7 +31,13 @@ function loadSuppliers(): Supplier[] {
     const raw = window.localStorage.getItem(SUPPLIERS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as Supplier[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as LegacySupplier[]).map((supplier) => ({
+      ...supplier,
+      subcategoryIds: supplier.subcategoryIds ?? [],
+      productIds: supplier.productIds ?? [],
+      notes: supplier.notes || supplier.goods || '',
+    }));
   } catch {
     return [];
   }
@@ -24,6 +45,7 @@ function loadSuppliers(): Supplier[] {
 
 export default function SuppliersManager() {
   const [suppliers, setSuppliers] = useState<Supplier[]>(loadSuppliers);
+  const [products] = useState<Product[]>(loadProducts);
   const [modal, setModal] = useState<ModalState>(null);
   const [deleting, setDeleting] = useState<Supplier | null>(null);
   const [search, setSearch] = useState('');
@@ -78,7 +100,7 @@ export default function SuppliersManager() {
           <p className="text-xs font-semibold text-blue-600 mb-1.5">إدارة الموردين</p>
           <h1 className="text-2xl font-bold text-slate-900">الموردين</h1>
           <p className="text-sm text-slate-500 mt-1.5">
-            سجّل مورديك مع أرصدتهم الافتتاحية لمتابعة الذمم والتوريدات لاحقاً.
+            سجّل مورديك واربطهم بالبضاعة المتعامل بها وبالأرصدة الافتتاحية.
           </p>
         </div>
         <button
@@ -109,6 +131,7 @@ export default function SuppliersManager() {
       ) : (
         <SupplierList
           suppliers={filtered}
+          products={products}
           onAdd={() => setModal({ mode: 'create' })}
           onEdit={(supplier) => setModal({ mode: 'edit', supplier })}
           onDelete={setDeleting}

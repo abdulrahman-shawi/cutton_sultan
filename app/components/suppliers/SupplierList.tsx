@@ -1,10 +1,12 @@
 // components/suppliers/SupplierList.tsx
 import { Pencil, Plus, Trash2, Truck } from 'lucide-react';
 import { formatPrice } from '../products/types';
+import type { Product } from '../products/types';
 import type { Supplier } from './types';
 
 interface SupplierListProps {
   suppliers: Supplier[];
+  products: Product[];
   onAdd: () => void;
   onEdit: (supplier: Supplier) => void;
   onDelete: (supplier: Supplier) => void;
@@ -35,13 +37,28 @@ function BalanceCell({ supplier }: { supplier: Supplier }) {
   );
 }
 
-export default function SupplierList({ suppliers, onAdd, onEdit, onDelete }: SupplierListProps) {
+function GoodsCell({ supplier, products }: { supplier: Supplier; products: Product[] }) {
+  const selected = products.filter((product) => supplier.productIds.includes(product.id));
+  if (selected.length === 0) return <span className="text-sm text-slate-400">—</span>;
+  const names = selected.slice(0, 2).map((product) => product.name).join('، ');
+  return (
+    <div className="min-w-0">
+      <p className="text-sm font-medium text-slate-700">{selected.length} منتجاً</p>
+      <p className="text-xs text-slate-400 truncate">
+        {names}
+        {selected.length > 2 ? ` و${selected.length - 2} أخرى` : ''}
+      </p>
+    </div>
+  );
+}
+
+export default function SupplierList({ suppliers, products, onAdd, onEdit, onDelete }: SupplierListProps) {
   if (suppliers.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
         <Truck className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
         <p className="font-semibold text-slate-700 mb-1">لا يوجد موردون بعد</p>
-        <p className="text-sm text-slate-400 mb-5">سجّل مورديك مع أرصدتهم الافتتاحية لمتابعة الذمم والتوريدات.</p>
+        <p className="text-sm text-slate-400 mb-5">سجّل مورديك واربطهم بالبضاعة المتعامل بها وبالأرصدة الافتتاحية.</p>
         <button
           type="button"
           onClick={onAdd}
@@ -54,12 +71,12 @@ export default function SupplierList({ suppliers, onAdd, onEdit, onDelete }: Sup
     );
   }
 
-  const gridTemplate = 'grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)_110px_96px]';
+  const gridTemplate = 'grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_110px_96px]';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
-        <div className="min-w-[760px]">
+        <div className="min-w-[780px]">
           <div className={`grid ${gridTemplate} items-center gap-4 px-5 py-3.5 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-400`}>
             <span>المورّد</span>
             <span>البضاعة المتعامل بها</span>
@@ -82,7 +99,7 @@ export default function SupplierList({ suppliers, onAdd, onEdit, onDelete }: Sup
                     <p className="text-xs text-slate-400 truncate" dir="ltr">{supplier.phone || '—'}</p>
                   </div>
                 </div>
-                <p className="text-sm text-slate-600 truncate">{supplier.goods || '—'}</p>
+                <GoodsCell supplier={supplier} products={products} />
                 <BalanceCell supplier={supplier} />
                 <span className="text-xs text-slate-400">{formatDate(supplier.createdAt)}</span>
                 <div className="flex items-center justify-center gap-1">
