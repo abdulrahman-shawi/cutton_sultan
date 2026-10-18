@@ -16,7 +16,12 @@ interface VariantsBuilderProps {
 }
 
 function unique(values: string[]): string[] {
-  return [...new Set(values)];
+  const seen: Record<string, boolean> = {};
+  return values.filter((value) => {
+    if (seen[value]) return false;
+    seen[value] = true;
+    return true;
+  });
 }
 
 function ChipGroup({
