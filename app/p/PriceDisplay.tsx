@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { PackageSearch } from 'lucide-react';
+import { PackageSearch, Search } from 'lucide-react';
 import CameraScanner from './CameraScanner';
 import { PRODUCTS_STORAGE_KEY, formatPrice, type Product } from '../components/products/types';
 import { loadDollarRate } from '../components/settings/types';
@@ -53,6 +53,7 @@ export default function PriceDisplay() {
   const [info, setInfo] = useState<PriceInfo | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [manualCode, setManualCode] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -65,23 +66,68 @@ export default function PriceDisplay() {
     setLoaded(true);
   }, []);
 
-  const handleScanned = useCallback((value: string) => {
-    setScanError('');
+  const resolveValue = useCallback((value: string): boolean => {
     if (/^https?:\/\//.test(value)) {
       window.location.href = value;
-      return;
+      return true;
     }
     if (/^\d{13}$/.test(value)) {
       const found = lookupBarcode(value);
       if (found) {
         setInfo(found);
-      } else {
-        setScanError('هذا الباركود غير مسجل على هذا الجهاز — امسح رمز QR الموجود على الملصق');
+        return true;
       }
-      return;
+      setScanError('هذا الباركود غير مسجل على هذا الجهاز — امسح رمز QR الموجود على الملصق');
+      return false;
     }
     setScanError('تعذر التعرف على الرمز الممسوح');
+    return false;
   }, []);
+
+  const handleScanned = useCallback(
+    (value: string) => {
+      setScanError('');
+      resolveValue(value);
+    },
+    [resolveValue]
+  );
+
+  const handleManualSearch = () => {
+    const value = manualCode.trim();
+    if (!value) return;
+    setScanError('');
+    if (!resolveValue(value)) return;
+    setManualCode('');
+  };
+
+  const scanSection = (
+    <div className="space-y-3">
+      <CameraScanner onDetected={handleScanned} />
+      <div className="flex gap-2">
+        <input
+          type="text"
+          dir="ltr"
+          inputMode="numeric"
+          value={manualCode}
+          onChange={(event) => setManualCode(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') handleManualSearch();
+          }}
+          placeholder="أو أدخل رقم الباركود (13 رقم)"
+          className="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+        />
+        <button
+          type="button"
+          onClick={handleManualSearch}
+          aria-label="بحث"
+          className="px-3 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+        >
+          <Search className="w-4 h-4" aria-hidden="true" />
+        </button>
+      </div>
+      {scanError && <p className="text-xs text-amber-600 leading-relaxed">{scanError}</p>}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-slate-100 flex items-center justify-center p-4">
@@ -103,8 +149,7 @@ export default function PriceDisplay() {
               </p>
             </div>
             <p className="text-xs text-slate-400">جميع الأسعار بالليرة السورية</p>
-            <CameraScanner onDetected={handleScanned} />
-            {scanError && <p className="text-xs text-amber-600">{scanError}</p>}
+            {scanSection}
           </div>
         ) : (
           loaded && (
@@ -117,8 +162,7 @@ export default function PriceDisplay() {
                 امسح رمز QR أو الباركود الموجود على ملصق المنتج لعرض اسم القطعة وسعرها
                 بالليرة السورية.
               </p>
-              <CameraScanner onDetected={handleScanned} />
-              {scanError && <p className="text-xs text-amber-600">{scanError}</p>}
+              {scanSection}
             </div>
           )
         )}
