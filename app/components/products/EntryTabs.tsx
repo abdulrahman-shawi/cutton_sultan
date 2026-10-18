@@ -1,11 +1,12 @@
 // components/products/EntryTabs.tsx
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import type { Subcategory } from '../subcategories/types';
 import {
   COLOR_SUGGESTIONS,
   PRODUCT_CURRENCIES,
   SIZE_SUGGESTIONS,
+  generateBarcode,
   type EntryDraft,
   type ProductCurrency,
 } from './types';
@@ -65,6 +66,7 @@ export default function EntryTabs({ entries, subcategories, dollarRate, onChange
         quantity: '',
         wholesalePrice: '',
         salePrice: '',
+        barcode: generateBarcode(),
       },
     ]);
     setActiveIndex(entries.length);
@@ -229,6 +231,31 @@ export default function EntryTabs({ entries, subcategories, dollarRate, onChange
                 dollarRate={dollarRate}
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">الباركود</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                dir="ltr"
+                value={activeEntry.barcode}
+                onChange={(event) => updateActive('barcode', event.target.value)}
+                placeholder="0000000000000"
+                className={`${fieldClass} flex-1 min-w-0 text-left`}
+              />
+              <button
+                type="button"
+                onClick={() => updateActive('barcode', generateBarcode())}
+                title="توليد باركود جديد"
+                className="px-3 rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">
+              باركود فريد لكل تفصيلة (لون / مقاس) — يُستخدم في الفوترة والمسح
+            </p>
           </div>
 
           {entries.length > 1 && (

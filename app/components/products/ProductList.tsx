@@ -11,6 +11,7 @@ interface ProductListProps {
   onAdd: () => void;
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
+  onViewDetails: (product: Product) => void;
 }
 
 function StatusBadge({ status }: { status: Product['status'] }) {
@@ -43,6 +44,7 @@ export default function ProductList({
   onAdd,
   onEdit,
   onDelete,
+  onViewDetails,
 }: ProductListProps) {
   if (products.length === 0) {
     return (
@@ -126,16 +128,21 @@ export default function ProductList({
                       {companies.length > 0 ? companies.join(' · ') : 'بدون شركة'}
                     </p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => onViewDetails(product)}
+                    className="min-w-0 text-right group"
+                    title="عرض تفاصيل التفصيلات"
+                  >
+                    <p className="text-sm font-medium text-blue-600 group-hover:text-blue-700 transition-colors">
                       {product.entries.length} تفصيلة · {totalQuantity} قطعة
                     </p>
                     {priceParts.length > 0 && (
-                      <p className="text-xs text-slate-400 truncate">
+                      <p className="text-xs text-slate-400 truncate group-hover:text-slate-500 transition-colors">
                         يبدأ المفرق من {priceParts.join(' · ')}
                       </p>
                     )}
-                  </div>
+                  </button>
                   <StatusBadge status={product.status} />
                   <div className="flex items-center justify-center gap-1">
                     <button

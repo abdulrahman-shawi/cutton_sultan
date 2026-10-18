@@ -3,9 +3,15 @@ import { useState, type FormEvent } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import type { Category } from '../categories/types';
 import type { Subcategory } from '../subcategories/types';
-import { SETTINGS_STORAGE_KEY } from '../settings/types';
+import { loadDollarRate } from '../settings/types';
 import EntryTabs from './EntryTabs';
-import { PRODUCT_STATUSES, type EntryDraft, type Product, type ProductStatus } from './types';
+import {
+  PRODUCT_STATUSES,
+  generateBarcode,
+  type EntryDraft,
+  type Product,
+  type ProductStatus,
+} from './types';
 
 interface ProductModalProps {
   mode: 'create' | 'edit';
@@ -19,18 +25,6 @@ interface ProductModalProps {
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
-
-function loadDollarRate(): number {
-  if (typeof window === 'undefined') return 0;
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return 0;
-    const rate = Number((JSON.parse(raw) as { dollarRate?: string }).dollarRate);
-    return Number.isFinite(rate) && rate > 0 ? rate : 0;
-  } catch {
-    return 0;
-  }
-}
 
 export default function ProductModal({
   mode,
@@ -56,6 +50,7 @@ export default function ProductModal({
       quantity: String(entry.quantity),
       wholesalePrice: String(entry.wholesalePrice),
       salePrice: String(entry.salePrice),
+      barcode: entry.barcode || generateBarcode(),
     }))
   );
   const [error, setError] = useState('');
@@ -73,6 +68,7 @@ export default function ProductModal({
     if (!categoryId) return setError('يرجى اختيار القسم الرئيسي');
     if (entries.length === 0) return setError('أضف تفصيلة واحدة على الأقل (لون / مقاس)');
 
+    const barcodes: string[] = [];
     for (let index = 0; index < entries.length; index++) {
       const entry = entries[index];
       const label = `التفصيلة رقم ${index + 1}`;
@@ -82,6 +78,13 @@ export default function ProductModal({
       if (!entry.subcategoryId) {
         return setError(`اختر القسم الفرعي (الشركة) في ${label}`);
       }
+      if (!entry.barcode.trim()) {
+        return setError(`أدخل الباركود في ${label}`);
+      }
+      if (barcodes.indexOf(entry.barcode.trim()) !== -1) {
+        return setError(`الباركود مكرر بين التفصيلات — كل تفصيلة يجب أن يكون لها باركود فريد`);
+      }
+      barcodes.push(entry.barcode.trim());
       if (
         entry.quantity.trim() === '' ||
         entry.wholesalePrice.trim() === '' ||
@@ -113,6 +116,7 @@ export default function ProductModal({
         quantity: Number(entry.quantity),
         wholesalePrice: Number(entry.wholesalePrice),
         salePrice: Number(entry.salePrice),
+        barcode: entry.barcode.trim(),
       })),
     });
   };

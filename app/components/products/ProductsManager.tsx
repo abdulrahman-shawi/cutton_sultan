@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Check, Layers, Plus } from 'lucide-react';
 import ProductList from './ProductList';
 import ProductModal from './ProductModal';
+import EntryDetailsModal from './EntryDetailsModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
 import {
   CATEGORIES_STORAGE_KEY,
@@ -58,6 +59,7 @@ export default function ProductsManager() {
   const [subcategories] = useState<Subcategory[]>(loadSubcategories);
   const [products, setProducts] = useState<Product[]>(loadProducts);
   const [modal, setModal] = useState<ModalState>(null);
+  const [viewing, setViewing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -102,7 +104,7 @@ export default function ProductsManager() {
           <p className="text-xs font-semibold text-blue-600 mb-1.5">إدارة المنتجات</p>
           <h1 className="text-2xl font-bold text-slate-900">المنتجات</h1>
           <p className="text-sm text-slate-500 mt-1.5">
-            أضف منتجاتك مع توليفات الألوان والمقاسات وأسعار الجملة والمبيع بالسوري أو الدولار.
+            أضف منتجاتك مع تفصيلات الألوان والمقاسات وأسعار الجملة والمفرق بالسوري أو الدولار.
           </p>
         </div>
         {categories.length > 0 && (
@@ -139,6 +141,7 @@ export default function ProductsManager() {
           onAdd={() => setModal({ mode: 'create' })}
           onEdit={(product) => setModal({ mode: 'edit', product })}
           onDelete={setDeleting}
+          onViewDetails={setViewing}
         />
       )}
 
@@ -151,6 +154,14 @@ export default function ProductsManager() {
           defaultCategoryId={categories[0]?.id ?? null}
           onClose={() => setModal(null)}
           onSave={handleSave}
+        />
+      )}
+
+      {viewing && (
+        <EntryDetailsModal
+          product={viewing}
+          subcategories={subcategories}
+          onClose={() => setViewing(null)}
         />
       )}
 

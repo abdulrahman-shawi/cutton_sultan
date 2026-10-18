@@ -10,6 +10,7 @@ export interface ProductEntry {
   quantity: number;
   wholesalePrice: number;
   salePrice: number;
+  barcode: string;
 }
 
 export interface EntryDraft {
@@ -20,6 +21,7 @@ export interface EntryDraft {
   quantity: string;
   wholesalePrice: string;
   salePrice: string;
+  barcode: string;
 }
 
 export interface Product {
@@ -49,3 +51,21 @@ export const SIZE_SUGGESTIONS = [
 ];
 
 export const PRODUCTS_STORAGE_KEY = 'sultan_products';
+
+// توليد باركود EAN-13 بصيغة سليمة تشمل رقم التحقق
+export function generateBarcode(): string {
+  let random = String(Math.floor(Math.random() * 10000000000));
+  while (random.length < 10) random = '0' + random;
+  const body = '20' + random;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const digit = Number(body.charAt(i));
+    sum += i % 2 === 0 ? digit : digit * 3;
+  }
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return body + String(checkDigit);
+}
+
+export function formatPrice(value: number): string {
+  return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
