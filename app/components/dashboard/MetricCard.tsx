@@ -11,7 +11,7 @@ interface MetricProps {
 
 export default function MetricCard({ title, value, change, isPositive, Icon }: MetricProps) {
   return (
-    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm   flex items-center justify-between">
       <div>
         <p className="text-xs font-medium text-slate-500 mb-1">{title}</p>
         <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
