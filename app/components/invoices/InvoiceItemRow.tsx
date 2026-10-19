@@ -126,11 +126,19 @@ export default function InvoiceItemRow({ item, type, entryOptions, onChange, onR
                   className="w-full text-right px-3.5 py-2.5 hover:bg-blue-50 transition-colors"
                 >
                   <p className="text-sm font-medium text-slate-800 truncate">{optionLabel(option)}</p>
-                  <p className="text-xs text-slate-400">
-                    موديل {option.modelNumber} ·{' '}
-                    {formatPrice(type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice)}{' '}
-                    {currencySymbol(option.currency)} · المخزون: {option.stock}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                    <span className="font-semibold text-slate-700">موديل {option.modelNumber}</span>
+                    {option.subcategoryName && (
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-600">
+                        {option.subcategoryName}
+                      </span>
+                    )}
+                    <span dir="ltr" className="font-bold text-emerald-600">
+                      {formatPrice(type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice)}{' '}
+                      {currencySymbol(option.currency)}
+                    </span>
+                    <span className="text-slate-400">المخزون: {option.stock}</span>
+                  </div>
                 </button>
               </li>
             ))}

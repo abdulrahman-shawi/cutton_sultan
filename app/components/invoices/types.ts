@@ -1,5 +1,6 @@
 // components/invoices/types.ts
 import { formatPrice, type Product, type ProductCurrency } from '../products/types';
+import type { Subcategory } from '../subcategories/types';
 
 export type InvoiceType = 'مقبوضات' | 'مدفوعات' | 'مصاريف يومية';
 export type PaymentStatus = 'مدفوعة' | 'مدفوعة جزئياً' | 'غير مدفوعة';
@@ -73,6 +74,7 @@ export interface EntryOption {
   productId: string;
   productName: string;
   modelNumber: string;
+  subcategoryName: string;
   color: string;
   size: string;
   currency: ProductCurrency;
@@ -81,7 +83,7 @@ export interface EntryOption {
   stock: number;
 }
 
-export function buildEntryOptions(products: Product[]): EntryOption[] {
+export function buildEntryOptions(products: Product[], subcategories: Subcategory[]): EntryOption[] {
   const options: EntryOption[] = [];
   for (const product of products) {
     for (const entry of product.entries) {
@@ -90,6 +92,7 @@ export function buildEntryOptions(products: Product[]): EntryOption[] {
         productId: product.id,
         productName: product.name,
         modelNumber: product.modelNumber,
+        subcategoryName: subcategories.find((subcategory) => subcategory.id === entry.subcategoryId)?.name ?? '',
         color: entry.color,
         size: entry.size,
         currency: entry.currency,

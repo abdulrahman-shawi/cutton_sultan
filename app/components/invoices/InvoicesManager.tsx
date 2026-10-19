@@ -10,6 +10,7 @@ import ConfirmDialog from '../categories/ConfirmDialog';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from '../customers/types';
 import { SUPPLIERS_STORAGE_KEY, type Supplier } from '../suppliers/types';
 import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
+import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
 import {
   INVOICES_STORAGE_KEY,
   INVOICE_TYPES,
@@ -57,6 +58,18 @@ function loadProducts(): Product[] {
   }
 }
 
+function loadSubcategories(): Subcategory[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(SUBCATEGORIES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Subcategory[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function loadInvoices(): Invoice[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -74,6 +87,7 @@ export default function InvoicesManager() {
   const [customers] = useState<Customer[]>(loadCustomers);
   const [suppliers] = useState<Supplier[]>(loadSuppliers);
   const [products] = useState<Product[]>(loadProducts);
+  const [subcategories] = useState<Subcategory[]>(loadSubcategories);
   const [modal, setModal] = useState<ModalState>(null);
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [deleting, setDeleting] = useState<Invoice | null>(null);
@@ -199,6 +213,7 @@ export default function InvoicesManager() {
           customers={customers}
           suppliers={suppliers}
           products={products}
+          subcategories={subcategories}
           onClose={() => setModal(null)}
           onSave={handleSave}
         />

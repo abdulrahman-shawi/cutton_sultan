@@ -6,6 +6,7 @@ import { formatPrice } from '../products/types';
 import type { Customer } from '../customers/types';
 import type { Supplier } from '../suppliers/types';
 import type { Product } from '../products/types';
+import type { Subcategory } from '../subcategories/types';
 import InvoiceItemRow from './InvoiceItemRow';
 import {
   INVOICE_TYPES,
@@ -26,6 +27,7 @@ interface InvoiceModalProps {
   customers: Customer[];
   suppliers: Supplier[];
   products: Product[];
+  subcategories: Subcategory[];
   onClose: () => void;
   onSave: (data: Omit<Invoice, 'id' | 'number' | 'createdAt'>) => void;
 }
@@ -33,7 +35,7 @@ interface InvoiceModalProps {
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
-export default function InvoiceModal({ customers, suppliers, products, onClose, onSave }: InvoiceModalProps) {
+export default function InvoiceModal({ customers, suppliers, products, subcategories, onClose, onSave }: InvoiceModalProps) {
   const [type, setType] = useState<InvoiceType>('مقبوضات');
   const [partyId, setPartyId] = useState('');
   const [status, setStatus] = useState<PaymentStatus>('مدفوعة');
@@ -45,7 +47,7 @@ export default function InvoiceModal({ customers, suppliers, products, onClose, 
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
 
-  const entryOptions = useMemo(() => buildEntryOptions(products), [products]);
+  const entryOptions = useMemo(() => buildEntryOptions(products, subcategories), [products, subcategories]);
   const isExpense = type === 'مصاريف يومية';
   const partyList: { id: string; name: string }[] =
     type === 'مقبوضات' ? customers : type === 'مدفوعات' ? suppliers : [];
