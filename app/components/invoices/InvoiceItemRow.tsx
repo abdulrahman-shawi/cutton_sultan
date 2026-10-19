@@ -64,7 +64,7 @@ export default function InvoiceItemRow({ item, type, entryOptions, exchangeRate,
 
   if (isExpense) {
     return (
-      <li className="grid grid-cols-[minmax(0,1fr)_130px_90px_40px] items-center gap-3">
+      <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[minmax(0,1fr)_130px_90px_40px] md:border-0 md:p-0">
         <input
           type="text"
           value={item.name}
@@ -72,29 +72,31 @@ export default function InvoiceItemRow({ item, type, entryOptions, exchangeRate,
           placeholder="بيان المادة..."
           className={cellInput}
         />
-        <input
-          type="number"
-          min="0"
-          step="any"
-          inputMode="decimal"
-          value={item.price}
-          onChange={(event) => onChange('price', event.target.value)}
-          placeholder="0"
-          className={`${cellInput} text-center`}
-        />
-        <select
-          value={item.currency}
-          onChange={(event) => onChange('currency', event.target.value)}
-          className={`${cellInput} bg-white cursor-pointer text-center`}
-        >
-          <option value="SYP">ل.س</option>
-          <option value="USD">$</option>
-        </select>
+        <div className="col-span-2 row-start-2 grid grid-cols-[minmax(0,1fr)_90px] gap-3 md:contents">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            inputMode="decimal"
+            value={item.price}
+            onChange={(event) => onChange('price', event.target.value)}
+            placeholder="السعر"
+            className={`${cellInput} text-center`}
+          />
+          <select
+            value={item.currency}
+            onChange={(event) => onChange('currency', event.target.value)}
+            className={`${cellInput} bg-white cursor-pointer text-center`}
+          >
+            <option value="SYP">ل.س</option>
+            <option value="USD">$</option>
+          </select>
+        </div>
         <button
           type="button"
           onClick={onRemove}
           aria-label="حذف البند"
-          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors justify-self-center"
+          className="row-start-1 col-start-2 justify-self-center p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors md:row-auto md:col-auto"
         >
           <Trash2 className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -103,7 +105,7 @@ export default function InvoiceItemRow({ item, type, entryOptions, exchangeRate,
   }
 
   return (
-    <li className="grid grid-cols-[minmax(0,1.5fr)_64px_100px_84px_minmax(0,1fr)_110px_40px] items-center gap-3">
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[minmax(0,1.5fr)_64px_100px_84px_minmax(0,1fr)_110px_40px] md:border-0 md:p-0">
       <div className="relative min-w-0">
         <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-300 pointer-events-none" aria-hidden="true" />
         <input
@@ -165,64 +167,70 @@ export default function InvoiceItemRow({ item, type, entryOptions, exchangeRate,
           </ul>
         )}
       </div>
-      <input
-        type="number"
-        min="1"
-        step="1"
-        inputMode="numeric"
-        value={item.quantity}
-        onChange={(event) => onChange('quantity', event.target.value)}
-        className={`${cellInput} text-center px-1`}
-      />
-      <div className="relative">
+      <div className="col-span-2 grid grid-cols-[64px_minmax(0,1fr)_84px] items-center gap-3 md:contents">
+        <input
+          type="number"
+          min="1"
+          step="1"
+          inputMode="numeric"
+          value={item.quantity}
+          onChange={(event) => onChange('quantity', event.target.value)}
+          placeholder="الكمية"
+          className={`${cellInput} text-center px-1`}
+        />
+        <div className="relative">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            inputMode="decimal"
+            value={item.price}
+            onChange={(event) => onChange('price', event.target.value)}
+            placeholder="السعر"
+            className={`${cellInput} text-center px-1`}
+          />
+          <span className="absolute left-1.5 top-2.5 text-[10px] text-slate-400 pointer-events-none">
+            {currencySymbol(item.currency)}
+          </span>
+          {usdOriginItem && linkedOption && (
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              الأصلي: <span dir="ltr">$ {formatPrice(linkedOption.retailPrice)}</span>
+            </p>
+          )}
+        </div>
         <input
           type="number"
           min="0"
           step="any"
           inputMode="decimal"
-          value={item.price}
-          onChange={(event) => onChange('price', event.target.value)}
-          className={`${cellInput} text-center px-1`}
+          value={item.discount}
+          onChange={(event) => onChange('discount', event.target.value)}
+          placeholder="0"
+          className={`${cellInput} text-center px-1 border-rose-200 focus:border-rose-400 focus:ring-rose-200`}
         />
-        <span className="absolute left-1.5 top-2.5 text-[10px] text-slate-400 pointer-events-none">
-          {currencySymbol(item.currency)}
-        </span>
-        {usdOriginItem && linkedOption && (
-          <p className="mt-0.5 text-[10px] text-slate-400">
-            الأصلي: <span dir="ltr">$ {formatPrice(linkedOption.retailPrice)}</span>
-          </p>
-        )}
-      </div>
-      <input
-        type="number"
-        min="0"
-        step="any"
-        inputMode="decimal"
-        value={item.discount}
-        onChange={(event) => onChange('discount', event.target.value)}
-        placeholder="0"
-        className={`${cellInput} text-center px-1 border-rose-200 focus:border-rose-400 focus:ring-rose-200`}
-      />
-      <input
-        type="text"
-        value={item.notes}
-        onChange={(event) => onChange('notes', event.target.value)}
-        placeholder="إضافة ملاحظة..."
-        className={`${cellInput} text-xs`}
-      />
-      <div className="flex items-center justify-between gap-1">
-        <p className="text-sm font-bold text-blue-600 whitespace-nowrap">
-          {formatPrice(lineTotal)}{' '}
-          <span className="text-[10px] font-normal">{currencySymbol(item.currency)}</span>
-        </p>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="حذف البند"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-        >
-          <Trash2 className="w-4 h-4" aria-hidden="true" />
-        </button>
+        <div className="col-span-3 flex items-center gap-3 md:contents">
+          <input
+            type="text"
+            value={item.notes}
+            onChange={(event) => onChange('notes', event.target.value)}
+            placeholder="إضافة ملاحظة..."
+            className={`${cellInput} min-w-0 flex-1 text-xs`}
+          />
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-sm font-bold text-blue-600 whitespace-nowrap">
+              {formatPrice(lineTotal)}{' '}
+              <span className="text-[10px] font-normal">{currencySymbol(item.currency)}</span>
+            </p>
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label="حذف البند"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       </div>
     </li>
   );

@@ -359,7 +359,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
               </div>
             )}
 
-            <div className={`grid ${headerGrid} gap-3 px-1 mb-2 text-[11px] font-semibold text-slate-400`}>
+            <div className={`hidden md:grid ${headerGrid} gap-3 px-1 mb-2 text-[11px] font-semibold text-slate-400`}>
               <span>{isExpense ? 'بيان المادة' : 'المنتج'}</span>
               {!isExpense && <span className="text-center">الكمية</span>}
               <span className="text-center">السعر</span>
