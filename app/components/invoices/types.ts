@@ -110,8 +110,25 @@ export function optionLabel(option: EntryOption): string {
   return variant ? `${option.productName} — ${variant}` : option.productName;
 }
 
-export function optionSearchText(option: EntryOption): string {
-  return `${option.productName} ${option.modelNumber} ${option.barcode}`.toLowerCase();
+// مطابقة البحث: الاسم ورقم الموديل باحتواء جزئي، والباركود من بدايته فقط حتى لا تظهر
+// نتائج مربكة عند إدخال أرقام تحدث صدفةً في وسط الباركود
+export function optionMatches(option: EntryOption, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const nameAndModel = `${option.productName} ${option.modelNumber}`.toLowerCase();
+  return words.every((word) => nameAndModel.includes(word) || option.barcode.startsWith(word));
+}
+
+// ترتيب النتائج: الموديل المطابق من بدايته أولاً ثم المحتوى ثم الاسم ثم الباركود
+export function optionMatchScore(option: EntryOption, query: string): number {
+  const q = query.trim().toLowerCase();
+  const model = option.modelNumber.toLowerCase();
+  const name = option.productName.toLowerCase();
+  if (model.startsWith(q)) return 0;
+  if (model.includes(q)) return 1;
+  if (name.startsWith(q)) return 2;
+  if (name.includes(q)) return 3;
+  return 4;
 }
 
 export function currencySymbol(currency: ProductCurrency): string {

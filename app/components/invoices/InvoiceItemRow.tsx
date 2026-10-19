@@ -5,7 +5,8 @@ import { formatPrice } from '../products/types';
 import {
   currencySymbol,
   optionLabel,
-  optionSearchText,
+  optionMatchScore,
+  optionMatches,
   convertUsdToSyp,
   type EntryOption,
   type InvoiceType,
@@ -31,7 +32,8 @@ export default function InvoiceItemRow({ item, type, entryOptions, exchangeRate,
   const query = item.query.trim().toLowerCase();
   const matches = !isExpense && query
     ? entryOptions
-        .filter((option) => optionSearchText(option).includes(query))
+        .filter((option) => optionMatches(option, query))
+        .sort((a, b) => optionMatchScore(a, query) - optionMatchScore(b, query))
         .slice(0, 8)
     : [];
 
