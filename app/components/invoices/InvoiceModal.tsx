@@ -7,11 +7,13 @@ import type { Customer } from '../customers/types';
 import type { Supplier } from '../suppliers/types';
 import type { Product } from '../products/types';
 import type { Subcategory } from '../subcategories/types';
+import { loadDollarRate } from '../settings/types';
 import InvoiceItemRow from './InvoiceItemRow';
 import {
   INVOICE_TYPES,
   PAYMENT_STATUSES,
   buildEntryOptions,
+  convertUsdToSyp,
   createItemDraft,
   currencySymbol,
   formatMoney,
@@ -46,8 +48,14 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [exchangeRate, setExchangeRate] = useState(() => {
+    const rate = loadDollarRate();
+    return rate > 0 ? String(rate) : '';
+  });
 
   const entryOptions = useMemo(() => buildEntryOptions(products, subcategories), [products, subcategories]);
+  const rateValue = Number(exchangeRate) || 0;
+  const isReceipts = type === 'مقبوضات';
   const isExpense = type === 'مصاريف يومية';
   const partyList: { id: string; name: string }[] =
     type === 'مقبوضات' ? customers : type === 'مدفوعات' ? suppliers : [];
@@ -69,6 +77,21 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
     setItems((prev) => prev.map((item) => (item.key === key ? { ...item, [field]: value } : item)));
   };
 
+  // تغيير سعر الصرف يُعيد تحويل بنود الدولار المرتبطة بمنتجات في فاتورة المقبوضات
+  const handleRateChange = (value: string) => {
+    setExchangeRate(value);
+    const rate = Number(value) || 0;
+    if (type !== 'مقبوضات' || rate <= 0) return;
+    setItems((prev) =>
+      prev.map((item) => {
+        if (!item.entryBarcode) return item;
+        const option = entryOptions.find((entry) => entry.barcode === item.entryBarcode);
+        if (!option || option.currency !== 'USD') return item;
+        return { ...item, currency: 'SYP', price: String(convertUsdToSyp(option.retailPrice, rate)) };
+      })
+    );
+  };
+
   const switchType = (next: InvoiceType) => {
     setType(next);
     setError('');
@@ -80,9 +103,12 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
         if (!item.entryBarcode) return item;
         const option = entryOptions.find((entry) => entry.barcode === item.entryBarcode);
         if (!option) return item;
+        const basePrice = next === 'مدفوعات' ? option.wholesalePrice : option.retailPrice;
+        const forceSyp = next === 'مقبوضات' && option.currency === 'USD';
         return {
           ...item,
-          price: String(next === 'مدفوعات' ? option.wholesalePrice : option.retailPrice),
+          currency: forceSyp ? 'SYP' : option.currency,
+          price: String(forceSyp && rateValue > 0 ? convertUsdToSyp(basePrice, rateValue) : basePrice),
         };
       })
     );
@@ -99,7 +125,8 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
       setScanError('لا يوجد منتج مسجل بهذا الباركود');
       return;
     }
-    const price = type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice;
+    const basePrice = type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice;
+    const forceSyp = type === 'مقبوضات' && option.currency === 'USD';
     const label = optionLabel(option);
     setItems((prev) => {
       const existing = prev.find((item) => item.entryBarcode === value);
@@ -118,8 +145,8 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
           entryBarcode: option.barcode,
           name: label,
           query: label,
-          currency: option.currency,
-          price: String(price),
+          currency: forceSyp ? 'SYP' : option.currency,
+          price: forceSyp ? (rateValue > 0 ? String(convertUsdToSyp(basePrice, rateValue)) : '') : String(basePrice),
           quantity: '1',
         },
       ];
@@ -167,10 +194,10 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
       paidSypValue = t.SYP;
       paidUsdValue = t.USD;
     } else if (status === 'مدفوعة جزئياً') {
-      paidSypValue = paidSyp.trim() === '' ? NaN : Number(paidSyp);
-      paidUsdValue = paidUsd.trim() === '' ? NaN : Number(paidUsd);
-      if (Number.isNaN(paidSypValue) || paidSypValue < 0) return setError('أدخل المبلغ المدفوع بالسوري');
-      if (Number.isNaN(paidUsdValue) || paidUsdValue < 0) return setError('أدخل المبلغ المدفوع بالدولار');
+      paidSypValue = t.SYP === 0 ? 0 : paidSyp.trim() === '' ? NaN : Number(paidSyp);
+      paidUsdValue = t.USD === 0 ? 0 : paidUsd.trim() === '' ? NaN : Number(paidUsd);
+      if (t.SYP > 0 && (Number.isNaN(paidSypValue) || paidSypValue < 0)) return setError('أدخل المبلغ المدفوع بالسوري');
+      if (t.USD > 0 && (Number.isNaN(paidUsdValue) || paidUsdValue < 0)) return setError('أدخل المبلغ المدفوع بالدولار');
       if (t.SYP > 0 && paidSypValue > t.SYP) return setError('المبلغ المدفوع بالسوري أكبر من إجمالي الفاتورة');
       if (t.USD > 0 && paidUsdValue > t.USD) return setError('المبلغ المدفوع بالدولار أكبر من إجمالي الفاتورة');
     }
@@ -235,7 +262,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
             ))}
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {!isExpense && (
               <div>
                 <label htmlFor="invoice-party" className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -259,6 +286,28 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+            {isReceipts && (
+              <div>
+                <label htmlFor="invoice-rate" className="block text-sm font-medium text-slate-700 mb-1.5">
+                  سعر الصرف <span className="text-xs font-normal text-slate-400">(ل.س للدولار الواحد)</span>
+                </label>
+                <input
+                  id="invoice-rate"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  dir="ltr"
+                  value={exchangeRate}
+                  onChange={(event) => handleRateChange(event.target.value)}
+                  placeholder="15000"
+                  className={`${inputClass} text-center`}
+                />
+                {rateValue <= 0 && (
+                  <p className="text-xs text-amber-600 mt-1">أدخل سعر الصرف ليُحوَّل سعر الدولار تلقائياً إلى ليرة سورية</p>
+                )}
               </div>
             )}
             <div>
@@ -288,6 +337,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                   <span className="text-xs font-normal text-slate-400">
                     {' '}
                     (السعر تلقائي: {type === 'مدفوعات' ? 'جملة' : 'مفرق'})
+                    {type === 'مقبوضات' && ' · الدفع بالليرة السورية'}
                   </span>
                 )}
               </span>
@@ -325,6 +375,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                   item={item}
                   type={type}
                   entryOptions={entryOptions}
+                  exchangeRate={rateValue}
                   onChange={(field, value) => updateItem(item.key, field, value)}
                   onRemove={() => setItems((prev) => prev.filter((entry) => entry.key !== item.key))}
                 />

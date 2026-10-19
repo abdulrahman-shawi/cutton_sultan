@@ -6,6 +6,7 @@ import {
   currencySymbol,
   optionLabel,
   optionSearchText,
+  convertUsdToSyp,
   type EntryOption,
   type InvoiceType,
   type ItemDraft,
@@ -15,6 +16,7 @@ interface InvoiceItemRowProps {
   item: ItemDraft;
   type: InvoiceType;
   entryOptions: EntryOption[];
+  exchangeRate: number;
   onChange: (field: keyof ItemDraft, value: string) => void;
   onRemove: () => void;
 }
@@ -22,7 +24,7 @@ interface InvoiceItemRowProps {
 const cellInput =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
-export default function InvoiceItemRow({ item, type, entryOptions, onChange, onRemove }: InvoiceItemRowProps) {
+export default function InvoiceItemRow({ item, type, entryOptions, exchangeRate, onChange, onRemove }: InvoiceItemRowProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const isExpense = type === 'مصاريف يومية';
 
@@ -38,16 +40,24 @@ export default function InvoiceItemRow({ item, type, entryOptions, onChange, onR
   const discount = item.discount.trim() === '' ? 0 : Number(item.discount) || 0;
   const lineTotal = Math.max(quantity * price - discount, 0);
 
+  // في المقبوضات يُدفع بالليرة فقط: سعر الدولار يُحوَّل بسعر الصرف ويُعرض أصله كمرجع
+  const linkedOption = item.entryBarcode
+    ? entryOptions.find((option) => option.barcode === item.entryBarcode)
+    : undefined;
+  const usdOriginItem = type === 'مقبوضات' && linkedOption?.currency === 'USD';
+
   const selectOption = (option: EntryOption) => {
     const label = optionLabel(option);
+    const basePrice = type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice;
+    const forceSyp = type === 'مقبوضات' && option.currency === 'USD';
     onChange('productId', option.productId);
     onChange('entryBarcode', option.barcode);
     onChange('name', label);
     onChange('query', label);
-    onChange('currency', option.currency);
+    onChange('currency', forceSyp ? 'SYP' : option.currency);
     onChange(
       'price',
-      String(type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice)
+      forceSyp ? (exchangeRate > 0 ? String(convertUsdToSyp(basePrice, exchangeRate)) : '') : String(basePrice)
     );
     setDropdownOpen(false);
   };
@@ -115,33 +125,43 @@ export default function InvoiceItemRow({ item, type, entryOptions, onChange, onR
         />
         {dropdownOpen && matches.length > 0 && (
           <ul className="absolute z-20 top-full right-0 left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
-            {matches.map((option) => (
-              <li key={option.barcode}>
-                <button
-                  type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    selectOption(option);
-                  }}
-                  className="w-full text-right px-3.5 py-2.5 hover:bg-blue-50 transition-colors"
-                >
-                  <p className="text-sm font-medium text-slate-800 truncate">{optionLabel(option)}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                    <span className="font-semibold text-slate-700">موديل {option.modelNumber}</span>
-                    {option.subcategoryName && (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-600">
-                        {option.subcategoryName}
+            {matches.map((option) => {
+              const optionPrice = type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice;
+              const convertedToSyp = type === 'مقبوضات' && option.currency === 'USD' && exchangeRate > 0;
+              const shownPrice = convertedToSyp ? convertUsdToSyp(optionPrice, exchangeRate) : optionPrice;
+              const shownCurrency = convertedToSyp ? 'SYP' : option.currency;
+              return (
+                <li key={option.barcode}>
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      selectOption(option);
+                    }}
+                    className="w-full text-right px-3.5 py-2.5 hover:bg-blue-50 transition-colors"
+                  >
+                    <p className="text-sm font-medium text-slate-800 truncate">{optionLabel(option)}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                      <span className="font-semibold text-slate-700">موديل {option.modelNumber}</span>
+                      {option.subcategoryName && (
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-600">
+                          {option.subcategoryName}
+                        </span>
+                      )}
+                      <span dir="ltr" className="font-bold text-emerald-600">
+                        {formatPrice(shownPrice)} {currencySymbol(shownCurrency)}
                       </span>
-                    )}
-                    <span dir="ltr" className="font-bold text-emerald-600">
-                      {formatPrice(type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice)}{' '}
-                      {currencySymbol(option.currency)}
-                    </span>
-                    <span className="text-slate-400">المخزون: {option.stock}</span>
-                  </div>
-                </button>
-              </li>
-            ))}
+                      {convertedToSyp && (
+                        <span dir="ltr" className="font-normal text-slate-400">
+                          ({formatPrice(optionPrice)} $)
+                        </span>
+                      )}
+                      <span className="text-slate-400">المخزون: {option.stock}</span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -167,6 +187,11 @@ export default function InvoiceItemRow({ item, type, entryOptions, onChange, onR
         <span className="absolute left-1.5 top-2.5 text-[10px] text-slate-400 pointer-events-none">
           {currencySymbol(item.currency)}
         </span>
+        {usdOriginItem && linkedOption && (
+          <p className="mt-0.5 text-[10px] text-slate-400">
+            الأصلي: <span dir="ltr">$ {formatPrice(linkedOption.retailPrice)}</span>
+          </p>
+        )}
       </div>
       <input
         type="number"

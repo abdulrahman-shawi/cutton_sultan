@@ -121,3 +121,8 @@ export function currencySymbol(currency: ProductCurrency): string {
 export function formatMoney(value: number, currency: ProductCurrency): string {
   return `${formatPrice(value)} ${currencySymbol(currency)}`;
 }
+
+// تحويل سعر الدولار إلى ما يعادله بالليرة السورية حسب سعر الصرف
+export function convertUsdToSyp(priceUsd: number, rate: number): number {
+  return rate > 0 ? Math.round(priceUsd * rate * 100) / 100 : priceUsd;
+}
