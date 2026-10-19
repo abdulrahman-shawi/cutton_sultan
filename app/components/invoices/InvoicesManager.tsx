@@ -82,11 +82,28 @@ function loadInvoices(): Invoice[] {
   }
 }
 
+// تعديل مخزون التفصيلات المرتبطة بفاتورة: نقصان في المقبوضات وزيادة في المدفوعات
+// sign = 1 عند حفظ فاتورة جديدة، و -1 عند حذفها لعكس أثرها على المخزون
+function adjustStock(products: Product[], invoice: Invoice, sign: 1 | -1): Product[] {
+  if (invoice.type === 'مصاريف يومية') return products;
+  const factor = (invoice.type === 'مقبوضات' ? -1 : 1) * sign;
+  return products.map((product) => {
+    let touched = false;
+    const entries = product.entries.map((entry) => {
+      const item = invoice.items.find((entryItem) => entryItem.entryBarcode === entry.barcode);
+      if (!item) return entry;
+      touched = true;
+      return { ...entry, quantity: Math.max(0, entry.quantity + factor * item.quantity) };
+    });
+    return touched ? { ...product, entries } : product;
+  });
+}
+
 export default function InvoicesManager() {
   const [invoices, setInvoices] = useState<Invoice[]>(loadInvoices);
   const [customers] = useState<Customer[]>(loadCustomers);
   const [suppliers] = useState<Supplier[]>(loadSuppliers);
-  const [products] = useState<Product[]>(loadProducts);
+  const [products, setProducts] = useState<Product[]>(loadProducts);
   const [subcategories] = useState<Subcategory[]>(loadSubcategories);
   const [modal, setModal] = useState<ModalState>(null);
   const [viewing, setViewing] = useState<Invoice | null>(null);
@@ -101,6 +118,14 @@ export default function InvoicesManager() {
       // التخزين غير متاح في هذا المتصفح
     }
   }, [invoices]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products));
+    } catch {
+      // التخزين غير متاح في هذا المتصفح
+    }
+  }, [products]);
 
   useEffect(() => {
     if (!toast) return;
@@ -130,10 +155,10 @@ export default function InvoicesManager() {
   }
 
   const handleSave = (data: Omit<Invoice, 'id' | 'number' | 'createdAt'>) => {
-    setInvoices((prev) => {
-      const number = prev.reduce((max, invoice) => Math.max(max, invoice.number), 0) + 1;
-      return [{ ...data, id: crypto.randomUUID(), number, createdAt: Date.now() }, ...prev];
-    });
+    const number = invoices.reduce((max, invoice) => Math.max(max, invoice.number), 0) + 1;
+    const invoice: Invoice = { ...data, id: crypto.randomUUID(), number, createdAt: Date.now() };
+    setInvoices((prev) => [invoice, ...prev]);
+    setProducts((prev) => adjustStock(prev, invoice, 1));
     setModal(null);
     setToast('تم حفظ الفاتورة بنجاح');
   };
@@ -141,6 +166,7 @@ export default function InvoicesManager() {
   const handleDelete = () => {
     if (!deleting) return;
     setInvoices((prev) => prev.filter((invoice) => invoice.id !== deleting.id));
+    setProducts((prev) => adjustStock(prev, deleting, -1));
     setDeleting(null);
     setToast('تم حذف الفاتورة بنجاح');
   };
@@ -159,7 +185,8 @@ export default function InvoicesManager() {
           <p className="text-xs font-semibold text-blue-600 mb-1.5">الحسابات</p>
           <h1 className="text-2xl font-bold text-slate-900">الفواتير</h1>
           <p className="text-sm text-slate-500 mt-1.5">
-            مقبوضات للعملاء بسعر المفرق، ومدفوعات للموردين بسعر الجملة، ومصاريف يومية.
+            مقبوضات للعملاء بسعر المفرق، ومدفوعات للموردين بسعر الجملة، ومصاريف يومية. يُحدَّث مخزون
+            المنتجات تلقائياً عند حفظ الفاتورة أو حذفها.
           </p>
         </div>
         <button
