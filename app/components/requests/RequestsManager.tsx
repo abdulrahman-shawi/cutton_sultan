@@ -7,6 +7,7 @@ import RequestList from './RequestList';
 import RequestModal from './RequestModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from '../customers/types';
+import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import {
   REQUESTS_STORAGE_KEY,
   REQUEST_STATUSES,
@@ -41,9 +42,22 @@ function loadCustomers(): Customer[] {
   }
 }
 
+function loadProducts(): Product[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(PRODUCTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Product[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function RequestsManager() {
   const [requests, setRequests] = useState<CustomerRequest[]>(loadRequests);
   const [customers] = useState<Customer[]>(loadCustomers);
+  const [products] = useState<Product[]>(loadProducts);
   const [modal, setModal] = useState<ModalState>(null);
   const [deleting, setDeleting] = useState<CustomerRequest | null>(null);
   const [filter, setFilter] = useState<Filter>('الكل');
@@ -193,6 +207,7 @@ export default function RequestsManager() {
           mode={modal.mode}
           initial={modal.mode === 'edit' ? modal.request : undefined}
           customers={customers}
+          products={products}
           onClose={() => setModal(null)}
           onSave={handleSave}
         />
