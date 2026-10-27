@@ -8,9 +8,11 @@ import RequestModal from './RequestModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from '../customers/types';
 import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
+import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
 import {
   REQUESTS_STORAGE_KEY,
   REQUEST_STATUSES,
+  requestItemsLabel,
   type CustomerRequest,
   type RequestStatus,
 } from './types';
@@ -18,13 +20,30 @@ import {
 type ModalState = { mode: 'create' } | { mode: 'edit'; request: CustomerRequest } | null;
 type Filter = 'الكل' | RequestStatus;
 
+// ترحيل الطلبات القديمة المخزنة بنموذج «منتج واحد» (productName/quantity) إلى قائمة أصناف
+function migrateRequest(raw: CustomerRequest & { productName?: string; quantity?: number }): CustomerRequest {
+  if (Array.isArray(raw.items)) return raw;
+  return {
+    ...raw,
+    items: [
+      {
+        key: raw.id,
+        productId: null,
+        entryBarcode: null,
+        name: raw.productName ?? '',
+        quantity: raw.quantity ?? 1,
+      },
+    ],
+  };
+}
+
 function loadRequests(): CustomerRequest[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(REQUESTS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as CustomerRequest[]) : [];
+    return Array.isArray(parsed) ? (parsed as CustomerRequest[]).map(migrateRequest) : [];
   } catch {
     return [];
   }
@@ -54,10 +73,23 @@ function loadProducts(): Product[] {
   }
 }
 
+function loadSubcategories(): Subcategory[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(SUBCATEGORIES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Subcategory[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function RequestsManager() {
   const [requests, setRequests] = useState<CustomerRequest[]>(loadRequests);
   const [customers] = useState<Customer[]>(loadCustomers);
   const [products] = useState<Product[]>(loadProducts);
+  const [subcategories] = useState<Subcategory[]>(loadSubcategories);
   const [modal, setModal] = useState<ModalState>(null);
   const [deleting, setDeleting] = useState<CustomerRequest | null>(null);
   const [filter, setFilter] = useState<Filter>('الكل');
@@ -87,7 +119,7 @@ export default function RequestsManager() {
     .filter(
       (request) =>
         !trimmedSearch ||
-        request.productName.includes(trimmedSearch) ||
+        request.items.some((item) => item.name.includes(trimmedSearch)) ||
         request.customerName.includes(trimmedSearch) ||
         request.phone.includes(trimmedSearch)
     );
@@ -110,7 +142,7 @@ export default function RequestsManager() {
     setRequests((prev) =>
       prev.map((item) => (item.id === request.id ? { ...item, status: next } : item))
     );
-    setToast(next === 'تم التوفر' ? `تم توفر «${request.productName}»` : 'أُعيد الطلب إلى قيد الانتظار');
+    setToast(next === 'تم التوفر' ? `تم توفر «${requestItemsLabel(request.items)}»` : 'أُعيد الطلب إلى قيد الانتظار');
   };
 
   const handleDelete = () => {
@@ -208,6 +240,7 @@ export default function RequestsManager() {
           initial={modal.mode === 'edit' ? modal.request : undefined}
           customers={customers}
           products={products}
+          subcategories={subcategories}
           onClose={() => setModal(null)}
           onSave={handleSave}
         />
@@ -215,7 +248,7 @@ export default function RequestsManager() {
 
       {deleting && (
         <ConfirmDialog
-          categoryName={`${deleting.productName} (${deleting.customerName})`}
+          categoryName={`${requestItemsLabel(deleting.items)} (${deleting.customerName})`}
           itemLabel="الطلب"
           onConfirm={handleDelete}
           onCancel={() => setDeleting(null)}

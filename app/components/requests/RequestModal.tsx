@@ -1,15 +1,24 @@
-// components/requests/RequestModal.tsx — تسجيل طلب عميل لمنتج غير متوفر
-import { useState, type FormEvent } from 'react';
-import { AlertCircle, Search, X } from 'lucide-react';
+// components/requests/RequestModal.tsx — تسجيل طلب عميل لمنتجات غير متوفرة
+import { useMemo, useState, type FormEvent } from 'react';
+import { AlertCircle, X } from 'lucide-react';
 import type { Customer } from '../customers/types';
 import type { Product } from '../products/types';
-import type { CustomerRequest } from './types';
+import type { Subcategory } from '../subcategories/types';
+import { buildEntryOptions } from '../invoices/types';
+import RequestItemRow from './RequestItemRow';
+import {
+  createRequestItemDraft,
+  type CustomerRequest,
+  type RequestItem,
+  type RequestItemDraft,
+} from './types';
 
 interface RequestModalProps {
   mode: 'create' | 'edit';
   initial?: CustomerRequest;
   customers: Customer[];
   products: Product[];
+  subcategories: Subcategory[];
   onClose: () => void;
   onSave: (data: Omit<CustomerRequest, 'id' | 'createdAt' | 'status'>) => void;
 }
@@ -17,46 +26,27 @@ interface RequestModalProps {
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
-// البحث في المنتجات بالاسم ورقم الموديل (تطابق جزئي) وبداية الباركود فقط، مثل بحث الفواتير
-function productMatches(product: Product, query: string): boolean {
-  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return false;
-  const nameAndModel = `${product.name} ${product.modelNumber}`.toLowerCase();
-  return words.every(
-    (word) =>
-      nameAndModel.includes(word) || product.entries.some((entry) => entry.barcode.startsWith(word))
-  );
+function toDrafts(items: RequestItem[]): RequestItemDraft[] {
+  return items.map((item) => ({
+    key: item.key,
+    productId: item.productId,
+    entryBarcode: item.entryBarcode,
+    name: item.name,
+    query: item.name,
+    quantity: String(item.quantity),
+  }));
 }
 
-// ترتيب النتائج: الموديل المطابق من بدايته أولاً ثم المحتوى ثم الاسم ثم الباركود
-function productMatchScore(product: Product, query: string): number {
-  const q = query.trim().toLowerCase();
-  const model = product.modelNumber.toLowerCase();
-  const name = product.name.toLowerCase();
-  if (model.startsWith(q)) return 0;
-  if (model.includes(q)) return 1;
-  if (name.startsWith(q)) return 2;
-  if (name.includes(q)) return 3;
-  return 4;
-}
-
-export default function RequestModal({ mode, initial, customers, products, onClose, onSave }: RequestModalProps) {
+export default function RequestModal({ mode, initial, customers, products, subcategories, onClose, onSave }: RequestModalProps) {
   const [customerName, setCustomerName] = useState(initial?.customerName ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [productName, setProductName] = useState(initial?.productName ?? '');
-  const [quantity, setQuantity] = useState(initial ? String(initial.quantity) : '1');
+  const [items, setItems] = useState<RequestItemDraft[]>(() =>
+    initial && initial.items.length > 0 ? toDrafts(initial.items) : [createRequestItemDraft()]
+  );
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [error, setError] = useState('');
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
 
-  const trimmedProduct = productName.trim();
-  const query = trimmedProduct.toLowerCase();
-  const suggestions = query
-    ? products
-        .filter((product) => productMatches(product, query) && product.name !== trimmedProduct)
-        .sort((a, b) => productMatchScore(a, query) - productMatchScore(b, query))
-        .slice(0, 8)
-    : [];
+  const entryOptions = useMemo(() => buildEntryOptions(products, subcategories), [products, subcategories]);
 
   const handleCustomerChange = (value: string) => {
     setCustomerName(value);
@@ -65,25 +55,35 @@ export default function RequestModal({ mode, initial, customers, products, onClo
     if (matched) setPhone(matched.phone);
   };
 
-  const selectProduct = (product: Product) => {
-    setProductName(product.name);
-    setError('');
-    if (!notes.trim()) setNotes(`موديل ${product.modelNumber}`);
-    setSuggestionsOpen(false);
+  const updateItem = (key: string, field: keyof RequestItemDraft, value: string) => {
+    setItems((prev) => prev.map((item) => (item.key === key ? { ...item, [field]: value } : item)));
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmedCustomer = customerName.trim();
     if (!trimmedCustomer) return setError('اسم العميل مطلوب');
-    if (!trimmedProduct) return setError('اسم المنتج المطلوب مطلوب');
-    const qty = quantity.trim() === '' ? 1 : Number(quantity);
-    if (!Number.isInteger(qty) || qty < 1) return setError('أدخل كمية صحيحة (1 أو أكثر)');
+    if (items.length === 0) return setError('أضف صنفاً واحداً على الأقل إلى الطلب');
+
+    const cleanItems: RequestItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.name.trim()) return setError(`أدخل اسم الصنف في السطر ${i + 1}`);
+      const qty = item.quantity.trim() === '' ? NaN : Number(item.quantity);
+      if (!Number.isInteger(qty) || qty < 1) return setError(`أدخل كمية صحيحة (1 أو أكثر) في السطر ${i + 1}`);
+      cleanItems.push({
+        key: item.key,
+        productId: item.productId,
+        entryBarcode: item.entryBarcode,
+        name: item.name.trim(),
+        quantity: qty,
+      });
+    }
+
     onSave({
       customerName: trimmedCustomer,
       phone: phone.trim(),
-      productName: trimmedProduct,
-      quantity: qty,
+      items: cleanItems,
       notes: notes.trim(),
     });
   };
@@ -94,11 +94,11 @@ export default function RequestModal({ mode, initial, customers, products, onClo
       <div
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6"
+        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6"
       >
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-slate-900">
-            {mode === 'create' ? 'تسجيل طلب عميل' : `تعديل طلب «${initial?.productName}»`}
+            {mode === 'create' ? 'تسجيل طلب عميل' : `تعديل طلب «${initial?.customerName}»`}
           </h2>
           <button
             type="button"
@@ -110,7 +110,7 @@ export default function RequestModal({ mode, initial, customers, products, onClo
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="request-customer" className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -146,85 +146,54 @@ export default function RequestModal({ mode, initial, customers, products, onClo
                 className={`${inputClass} text-left`}
               />
             </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="request-product" className="block text-sm font-medium text-slate-700 mb-1.5">
-                المنتج المطلوب <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Search className="absolute right-3 top-3.5 w-4 h-4 text-slate-300 pointer-events-none" aria-hidden="true" />
-                <input
-                  id="request-product"
-                  type="text"
-                  autoFocus
-                  value={productName}
-                  onChange={(event) => {
-                    setProductName(event.target.value);
-                    setError('');
-                    setSuggestionsOpen(true);
-                  }}
-                  onFocus={() => setSuggestionsOpen(true)}
-                  onBlur={() => setTimeout(() => setSuggestionsOpen(false), 150)}
-                  placeholder="ابحث بالاسم أو رقم الموديل أو بداية الباركود..."
-                  className={`${inputClass} pr-9`}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-sm font-medium text-slate-700">
+                المنتجات المطلوبة <span className="text-red-500">*</span>
+              </span>
+              <span className="text-xs font-normal text-slate-400">
+                اختر من الكتالوج أو اكتب اسم منتج غير مسجل
+              </span>
+            </div>
+            <div className="hidden md:grid grid-cols-[minmax(0,1.5fr)_80px_44px] gap-3 px-1 mb-2 text-[11px] font-semibold text-slate-400">
+              <span>المنتج</span>
+              <span className="text-center">الكمية</span>
+              <span />
+            </div>
+            <ul className="space-y-3">
+              {items.map((item) => (
+                <RequestItemRow
+                  key={item.key}
+                  item={item}
+                  entryOptions={entryOptions}
+                  onChange={(field, value) => updateItem(item.key, field, value)}
+                  onRemove={() => setItems((prev) => prev.filter((entry) => entry.key !== item.key))}
                 />
-                {suggestionsOpen && suggestions.length > 0 && (
-                  <ul className="absolute z-20 top-full right-0 left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
-                    {suggestions.map((product) => {
-                      const totalStock = product.entries.reduce((sum, entry) => sum + entry.quantity, 0);
-                      return (
-                        <li key={product.id}>
-                          <button
-                            type="button"
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              selectProduct(product);
-                            }}
-                            className="w-full text-right px-3.5 py-2.5 hover:bg-blue-50 transition-colors"
-                          >
-                            <p className="text-sm font-medium text-slate-800 truncate">{product.name}</p>
-                            <p className="text-xs text-slate-400">
-                              موديل {product.modelNumber} · المخزون: {totalStock}
-                            </p>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5">
-                اختر من الكتالوج أو اكتب اسم منتج جديد غير مسجل
-              </p>
-            </div>
-            <div>
-              <label htmlFor="request-quantity" className="block text-sm font-medium text-slate-700 mb-1.5">
-                الكمية
-              </label>
-              <input
-                id="request-quantity"
-                type="number"
-                min="1"
-                step="1"
-                inputMode="numeric"
-                value={quantity}
-                onChange={(event) => setQuantity(event.target.value)}
-                placeholder="1"
-                className={`${inputClass} text-center`}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="request-notes" className="block text-sm font-medium text-slate-700 mb-1.5">
-                تفاصيل إضافية
-              </label>
-              <textarea
-                id="request-notes"
-                rows={2}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="اللون، المقاس، رقم الموديل أو أي تفاصيل تساعد على إحضار المنتج (اختياري)"
-                className={`${inputClass} resize-none`}
-              />
-            </div>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => setItems((prev) => [...prev, createRequestItemDraft()])}
+              className="w-full mt-3 py-2.5 rounded-xl border-2 border-dashed border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors"
+            >
+              + إضافة صنف جديد
+            </button>
+          </div>
+
+          <div>
+            <label htmlFor="request-notes" className="block text-sm font-medium text-slate-700 mb-1.5">
+              تفاصيل إضافية
+            </label>
+            <textarea
+              id="request-notes"
+              rows={2}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="ملاحظات عامة على الطلب (اختياري)"
+              className={`${inputClass} resize-none`}
+            />
           </div>
 
           {error && (

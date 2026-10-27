@@ -1,6 +1,6 @@
 // components/requests/RequestList.tsx — عرض توصيات العملاء (منتجات مطلوبة ولم تكن متوفرة)
 import { CheckCircle2, Clock, Pencil, Plus, Trash2, ClipboardList } from 'lucide-react';
-import type { CustomerRequest } from './types';
+import { requestItemsLabel, requestTotalQuantity, type CustomerRequest } from './types';
 
 interface RequestListProps {
   requests: CustomerRequest[];
@@ -60,8 +60,11 @@ export default function RequestList({ requests, onAdd, onEdit, onDelete, onToggl
                 >
                   <div className="min-w-0">
                     <p className={`text-sm font-semibold truncate ${isPending ? 'text-slate-800' : 'text-slate-500'}`}>
-                      {request.productName}
+                      {requestItemsLabel(request.items)}
                     </p>
+                    {request.items.length > 1 && (
+                      <p className="text-xs text-slate-400 truncate">{request.items.length} أصناف في الطلب</p>
+                    )}
                     {request.notes && (
                       <p className="text-xs text-slate-400 truncate">{request.notes}</p>
                     )}
@@ -77,7 +80,7 @@ export default function RequestList({ requests, onAdd, onEdit, onDelete, onToggl
                       )}
                     </div>
                   </div>
-                  <span className="text-sm text-slate-600 text-center">{request.quantity}</span>
+                  <span className="text-sm text-slate-600 text-center">{requestTotalQuantity(request.items)}</span>
                   <div>
                     <button
                       type="button"
@@ -102,7 +105,7 @@ export default function RequestList({ requests, onAdd, onEdit, onDelete, onToggl
                     <button
                       type="button"
                       onClick={() => onEdit(request)}
-                      aria-label={`تعديل طلب ${request.productName}`}
+                      aria-label={`تعديل طلب ${requestItemsLabel(request.items)}`}
                       className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                     >
                       <Pencil className="w-4 h-4" aria-hidden="true" />
@@ -110,7 +113,7 @@ export default function RequestList({ requests, onAdd, onEdit, onDelete, onToggl
                     <button
                       type="button"
                       onClick={() => onDelete(request)}
-                      aria-label={`حذف طلب ${request.productName}`}
+                      aria-label={`حذف طلب ${requestItemsLabel(request.items)}`}
                       className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" aria-hidden="true" />
