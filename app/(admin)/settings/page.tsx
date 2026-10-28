@@ -1,4 +1,6 @@
 import SettingsForm from '../../components/settings/SettingsForm';
+import BackupSection from '../../components/settings/BackupSection';
+import UsersSection from '../../components/settings/UsersSection';
 
 export const metadata = {
   title: 'الإعدادات | نظام إدارة العملاء',
@@ -18,6 +20,10 @@ export default function SettingsPage() {
       </div>
 
       <SettingsForm />
+      <div className="settings-stack" style={{ marginTop: 20 }}>
+        <BackupSection />
+        <UsersSection />
+      </div>
     </main>
   );
 }

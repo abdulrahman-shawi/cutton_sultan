@@ -14,6 +14,7 @@ import {
   type Category,
 } from '../categories/types';
 import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
+import { loadLowStockThreshold } from '../settings/types';
 import { PRODUCTS_STORAGE_KEY, type Product } from './types';
 
 type ModalState = { mode: 'create' } | { mode: 'edit'; product: Product } | null;
@@ -138,6 +139,7 @@ export default function ProductsManager() {
           products={products}
           categories={categories}
           subcategories={subcategories}
+          lowStockThreshold={loadLowStockThreshold()}
           onAdd={() => setModal({ mode: 'create' })}
           onEdit={(product) => setModal({ mode: 'edit', product })}
           onDelete={setDeleting}

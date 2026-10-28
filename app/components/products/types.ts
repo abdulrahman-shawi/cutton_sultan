@@ -69,3 +69,19 @@ export function generateBarcode(): string {
 export function formatPrice(value: number): string {
   return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
+
+// مجموع قطع المنتج عبر كل تفصيلاته (لون/مقاس)
+export function productTotalQuantity(product: Product): number {
+  return product.entries.reduce((sum, entry) => sum + entry.quantity, 0);
+}
+
+// المنتجات التي انخفض مجموع قطعها عن حد التنبيه
+export function getLowStockProducts(
+  products: Product[],
+  threshold: number
+): { product: Product; totalQuantity: number }[] {
+  return products
+    .map((product) => ({ product, totalQuantity: productTotalQuantity(product) }))
+    .filter(({ totalQuantity }) => totalQuantity <= threshold)
+    .sort((a, b) => a.totalQuantity - b.totalQuantity);
+}

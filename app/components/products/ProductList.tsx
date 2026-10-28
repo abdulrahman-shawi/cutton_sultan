@@ -1,13 +1,14 @@
 // components/products/ProductList.tsx
-import { Package, Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Package, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Category } from '../categories/types';
 import type { Subcategory } from '../subcategories/types';
-import type { Product } from './types';
+import { productTotalQuantity, type Product } from './types';
 
 interface ProductListProps {
   products: Product[];
   categories: Category[];
   subcategories: Subcategory[];
+  lowStockThreshold: number;
   onAdd: () => void;
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
@@ -41,6 +42,7 @@ export default function ProductList({
   products,
   categories,
   subcategories,
+  lowStockThreshold,
   onAdd,
   onEdit,
   onDelete,
@@ -85,7 +87,8 @@ export default function ProductList({
           </div>
           <ul className="divide-y divide-slate-100">
             {products.map((product) => {
-              const totalQuantity = product.entries.reduce((sum, entry) => sum + entry.quantity, 0);
+              const totalQuantity = productTotalQuantity(product);
+              const isLowStock = totalQuantity <= lowStockThreshold;
               const companies = unique(
                 product.entries.map((entry) => subcategoryName(entry.subcategoryId)).filter(Boolean)
               );
@@ -143,7 +146,15 @@ export default function ProductList({
                       </p>
                     )}
                   </button>
-                  <StatusBadge status={product.status} />
+                  <div className="flex flex-col items-start gap-1.5">
+                    <StatusBadge status={product.status} />
+                    {isLowStock && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium bg-amber-50 text-amber-600">
+                        <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+                        مخزون منخفض
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center justify-center gap-1">
                     <button
                       type="button"

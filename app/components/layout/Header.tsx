@@ -1,11 +1,16 @@
 // components/layout/Header.tsx
-import { Bell, Menu, Search, User } from 'lucide-react';
+'use client';
+
+import { LogOut, Menu, Search, User } from 'lucide-react';
 
 interface HeaderProps {
   onMenuClick: () => void;
+  userName: string;
+  userRole: string;
+  onLogout: () => void;
 }
 
-export default function Header({ onMenuClick }: HeaderProps) {
+export default function Header({ onMenuClick, userName, userRole, onLogout }: HeaderProps) {
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-4 lg:px-6 flex items-center justify-between gap-3">
       <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -28,18 +33,23 @@ export default function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
-        <button className="relative p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
         <div className="flex items-center gap-3 border-r pr-3 border-slate-200">
           <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
-            A
+            <User className="w-4 h-4" aria-hidden="true" />
           </div>
           <div className="text-sm hidden sm:block">
-            <p className="font-semibold text-slate-800">عبدالرحمن</p>
-            <p className="text-xs text-slate-500">مدير النظام</p>
+            <p className="font-semibold text-slate-800">{userName}</p>
+            <p className="text-xs text-slate-500">{userRole}</p>
           </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            title="تسجيل الخروج"
+            aria-label="تسجيل الخروج"
+            className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+          >
+            <LogOut className="w-4 h-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
     </header>

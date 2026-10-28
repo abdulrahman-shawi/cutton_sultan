@@ -5,9 +5,11 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import MetricCard from "../components/dashboard/MetricCard";
 import RecentInvoices from "../components/dashboard/RecentInvoices";
 import RevenueChart from "../components/dashboard/RevenueChart";
+import LowStockCard from "../components/dashboard/LowStockCard";
 import DemoDataButton from "../components/demo/DemoDataButton";
 
 const metrics = [
@@ -56,10 +58,10 @@ export default function DashboardPage() {
             مرحباً بك مجدداً، إليك ملخص أداء النظام اليوم.
           </p>
         </div>
-        <button className="primary-button" type="button">
+        <Link href="/reports" className="primary-button">
           <span aria-hidden="true">＋</span>
           إنشاء تقرير
-        </button>
+        </Link>
       </div>
 
       <section className="metrics-grid" aria-label="المؤشرات الرئيسية">
@@ -70,7 +72,9 @@ export default function DashboardPage() {
 
       <section className="content-grid" aria-label="تحليلات المتجر">
         <RevenueChart />
-        <aside className="goal-card">
+        <div className="space-y-4">
+          <LowStockCard />
+          <aside className="goal-card">
           <div className="section-heading">
             <div>
               <h2>الهدف الشهري</h2>
@@ -100,6 +104,7 @@ export default function DashboardPage() {
             </p>
           </div>
         </aside>
+        </div>
       </section>
 
       <section aria-label="الفواتير الأخيرة">

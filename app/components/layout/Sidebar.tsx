@@ -2,7 +2,9 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 import { X } from 'lucide-react';
+import { canAccess, getSession } from '../auth/auth';
 
 const navItems = [
   { name: 'التحليلات (الداشبورد)', href: '/', icon: 'dashboard' },
@@ -11,6 +13,7 @@ const navItems = [
   { name: 'المنتجات', href: '/products', icon: 'products' },
   { name: 'توصيات العملاء', href: '/requests', icon: 'requests' },
   { name: 'الفواتير', href: '/invoices', icon: 'invoices' },
+  { name: 'التقارير المالية', href: '/reports', icon: 'reports' },
   { name: 'التبديلات والمرتجعات', href: '/returns', icon: 'returns' },
   { name: 'العملاء', href: '/customers', icon: 'customers' },
   { name: 'الموردين', href: '/suppliers', icon: 'suppliers' },
@@ -24,6 +27,7 @@ const icons = {
   products: <><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /></>,
   requests: <><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M9 12h6M9 16h6" /></>,
   invoices: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h8" /></>,
+  reports: <><path d="M3 3v18h18" /><path d="M7 15v3M12 10v8M17 6v12" /></>,
   returns: <><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
   customers: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
   suppliers: <><path d="M10 17h4V5H2v12h3" /><path d="M14 9h4l4 4v4h-2M14 17h-4" /><circle cx="7.5" cy="17.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
@@ -37,6 +41,8 @@ interface SidebarProps {
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const [role] = useState(() => getSession()?.role ?? 'موظف');
+  const visibleItems = navItems.filter((item) => canAccess(role, item.href));
 
   return (
     <>
@@ -66,7 +72,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link

@@ -7,6 +7,7 @@ export interface StoreSettings {
   openingBalanceUsd: string;
   contactEmail: string;
   socialLink: string;
+  lowStockThreshold: string;
 }
 
 export const defaultSettings: StoreSettings = {
@@ -17,6 +18,7 @@ export const defaultSettings: StoreSettings = {
   openingBalanceUsd: '',
   contactEmail: '',
   socialLink: '',
+  lowStockThreshold: '5',
 };
 
 export const currencyOptions = [
@@ -42,5 +44,20 @@ export function loadDollarRate(): number {
     return Number.isFinite(rate) && rate > 0 ? rate : 0;
   } catch {
     return 0;
+  }
+}
+
+export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
+
+// حد تنبيه نقص المخزون: الحد المحفوظ في الإعدادات أو الافتراضي عند غيابه
+export function loadLowStockThreshold(): number {
+  if (typeof window === 'undefined') return DEFAULT_LOW_STOCK_THRESHOLD;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_LOW_STOCK_THRESHOLD;
+    const value = Number((JSON.parse(raw) as StoreSettings).lowStockThreshold);
+    return Number.isFinite(value) && value >= 0 ? Math.floor(value) : DEFAULT_LOW_STOCK_THRESHOLD;
+  } catch {
+    return DEFAULT_LOW_STOCK_THRESHOLD;
   }
 }

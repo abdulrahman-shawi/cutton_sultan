@@ -52,6 +52,20 @@ export default function FinanceSection({ settings, onChange }: SettingsSectionPr
           placeholder="0"
           hint="يُحتسب تلقائياً عند إنشاء حساب عميل جديد (USD)"
         />
+        <SettingsField
+          id="lowStockThreshold"
+          label="حد تنبيه نقص المخزون"
+          type="number"
+          ltr
+          full
+          inputMode="decimal"
+          min="0"
+          step="1"
+          value={settings.lowStockThreshold}
+          onChange={(value) => onChange('lowStockThreshold', value)}
+          placeholder="5"
+          hint="تظهر شارة تنبيه في المنتجات ولوحة التحكم عند وصول مجموع قطع المنتج إلى هذا الحد أو دونه"
+        />
       </div>
     </section>
   );
