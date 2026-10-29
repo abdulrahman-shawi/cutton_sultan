@@ -8,6 +8,7 @@ import ProductList from './ProductList';
 import ProductModal from './ProductModal';
 import EntryDetailsModal from './EntryDetailsModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import {
   CATEGORIES_STORAGE_KEY,
   seedCategories,
@@ -63,6 +64,7 @@ export default function ProductsManager() {
   const [viewing, setViewing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('products');
 
   useEffect(() => {
     try {
@@ -108,7 +110,7 @@ export default function ProductsManager() {
             أضف منتجاتك مع تفصيلات الألوان والمقاسات وأسعار الجملة والمفرق بالسوري أو الدولار.
           </p>
         </div>
-        {categories.length > 0 && (
+        {categories.length > 0 && perms.add && (
           <button
             type="button"
             onClick={() => setModal({ mode: 'create' })}
@@ -140,6 +142,9 @@ export default function ProductsManager() {
           categories={categories}
           subcategories={subcategories}
           lowStockThreshold={loadLowStockThreshold()}
+          canAdd={perms.add}
+          canEdit={perms.edit}
+          canDelete={perms.delete}
           onAdd={() => setModal({ mode: 'create' })}
           onEdit={(product) => setModal({ mode: 'edit', product })}
           onDelete={setDeleting}

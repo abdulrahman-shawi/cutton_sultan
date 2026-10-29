@@ -7,6 +7,7 @@ import { Check, Layers, Plus } from 'lucide-react';
 import SubcategoryList from './SubcategoryList';
 import SubcategoryModal from './SubcategoryModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import {
   CATEGORIES_STORAGE_KEY,
   seedCategories,
@@ -51,6 +52,7 @@ export default function SubcategoriesManager() {
   const [modal, setModal] = useState<ModalState>(null);
   const [deleting, setDeleting] = useState<Subcategory | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('subcategories');
 
   useEffect(() => {
     try {
@@ -118,7 +120,7 @@ export default function SubcategoriesManager() {
             الشركات والماركات المندرجة تحت كل قسم رئيسي — مثل فوريو وبازكة تحت قسم الأطفال.
           </p>
         </div>
-        {categories.length > 0 && (
+        {categories.length > 0 && perms.add && (
           <button
             type="button"
             onClick={() => setModal({ mode: 'create' })}
@@ -176,6 +178,9 @@ export default function SubcategoriesManager() {
           <SubcategoryList
             subcategories={visibleSubcategories}
             categoryName={activeCategory?.name ?? ''}
+            canAdd={perms.add}
+            canEdit={perms.edit}
+            canDelete={perms.delete}
             onAdd={() => setModal({ mode: 'create' })}
             onEdit={(subcategory) => setModal({ mode: 'edit', subcategory })}
             onDelete={setDeleting}

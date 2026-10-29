@@ -5,6 +5,8 @@ import { formatMoney } from '../invoices/types';
 
 interface ReturnListProps {
   records: ReturnRecord[];
+  canAdd?: boolean;
+  canDelete?: boolean;
   onAdd: () => void;
   onView: (record: ReturnRecord) => void;
   onDelete: (record: ReturnRecord) => void;
@@ -30,7 +32,14 @@ function MoneyLines({ syp, usd }: { syp: number; usd: number }) {
   );
 }
 
-export default function ReturnList({ records, onAdd, onView, onDelete }: ReturnListProps) {
+export default function ReturnList({
+  records,
+  canAdd = true,
+  canDelete = true,
+  onAdd,
+  onView,
+  onDelete,
+}: ReturnListProps) {
   if (records.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
@@ -39,14 +48,16 @@ export default function ReturnList({ records, onAdd, onView, onDelete }: ReturnL
         <p className="text-sm text-slate-400 mb-5">
           سجّل مرتجعاً لاسترجاع أصناف من الزبون، أو تبديلاً لاستبدالها بأصناف أخرى.
         </p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          تسجيل عملية جديدة
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            تسجيل عملية جديدة
+          </button>
+        )}
       </div>
     );
   }
@@ -121,14 +132,16 @@ export default function ReturnList({ records, onAdd, onView, onDelete }: ReturnL
                     >
                       <Eye className="w-4 h-4" aria-hidden="true" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(record)}
-                      aria-label={`حذف عملية رقم ${record.number}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" aria-hidden="true" />
-                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(record)}
+                        aria-label={`حذف عملية رقم ${record.number}`}
+                        className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </li>
               );

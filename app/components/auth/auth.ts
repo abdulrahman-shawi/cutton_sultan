@@ -1,11 +1,16 @@
-// components/auth/auth.ts — تسجيل الدخول والصلاحيات (تخزين محلي بدون خادم)
-export type UserRole = 'مدير' | 'موظف';
+// components/auth/auth.ts — تسجيل الدخول وإدارة المستخدمين (تخزين محلي بدون خادم)
+import {
+  ADMIN_ROLE_ID,
+  EMPLOYEE_ROLE_ID,
+  getRoleById,
+  seedDefaultRoles,
+} from './permissions';
 
 export interface User {
   id: string;
   username: string;
   name: string;
-  role: UserRole;
+  roleId: string;
   passwordHash: string;
   createdAt: number;
 }
@@ -14,17 +19,16 @@ export interface Session {
   userId: string;
   username: string;
   name: string;
-  role: UserRole;
+  roleId: string;
+  role: string; // اسم الصلاحية للعرض فقط
   loginAt: number;
 }
 
 export const USERS_STORAGE_KEY = 'sultan_users';
 export const SESSION_STORAGE_KEY = 'sultan_session';
 
-export const USER_ROLES: UserRole[] = ['مدير', 'موظف'];
-
-// الصفحات الخاصة بالمدير فقط
-export const ADMIN_ONLY_PATHS = ['/settings', '/reports'];
+// المستخدمون المحفوظون قبل نظام الصلاحيات — كان لديهم حقل role نصي
+type LegacyUser = User & { role?: 'مدير' | 'موظف' };
 
 // بصمة كلمة مرور بسيطة (djb2) — حماية من القراءة العابرة فقط، ليست بديلاً عن خادم حقيقي
 export function hashPassword(password: string): string {
@@ -41,7 +45,22 @@ export function loadUsers(): User[] {
     const raw = window.localStorage.getItem(USERS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as User[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    const users = (parsed as LegacyUser[]).map((user) => ({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      roleId:
+        user.roleId ??
+        (user.role === 'مدير' ? ADMIN_ROLE_ID : EMPLOYEE_ROLE_ID),
+      passwordHash: user.passwordHash,
+      createdAt: user.createdAt,
+    }));
+    // حفظ الترحيل مرة واحدة إن وُجد مستخدم بصيغة قديمة
+    if (users.some((user, index) => !(parsed[index] as User).roleId)) {
+      saveUsers(users);
+    }
+    return users;
   } catch {
     return [];
   }
@@ -51,15 +70,20 @@ export function saveUsers(users: User[]): void {
   window.localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
-// أول تشغيل: حساب مدير افتراضي (admin / admin123) — يُنصح بتغييره فوراً
+export function countUsersWithRole(roleId: string): number {
+  return loadUsers().filter((user) => user.roleId === roleId).length;
+}
+
+// أول تشغيل: الصلاحيات الافتراضية ثم حساب مدير (admin / admin123) — يُنصح بتغييره فوراً
 export function seedDefaultUsers(): void {
+  seedDefaultRoles();
   if (loadUsers().length > 0) return;
   saveUsers([
     {
       id: 'user-admin',
       username: 'admin',
       name: 'المدير',
-      role: 'مدير',
+      roleId: ADMIN_ROLE_ID,
       passwordHash: hashPassword('admin123'),
       createdAt: Date.now(),
     },
@@ -80,11 +104,13 @@ export function getSession(): Session | null {
 export function login(username: string, password: string): Session | null {
   const user = loadUsers().find((entry) => entry.username === username.trim().toLowerCase());
   if (!user || user.passwordHash !== hashPassword(password)) return null;
+  const role = getRoleById(user.roleId);
   const session: Session = {
     userId: user.id,
     username: user.username,
     name: user.name,
-    role: user.role,
+    roleId: user.roleId,
+    role: role?.name ?? 'بدون صلاحية',
     loginAt: Date.now(),
   };
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
@@ -93,9 +119,4 @@ export function login(username: string, password: string): Session | null {
 
 export function logout(): void {
   window.localStorage.removeItem(SESSION_STORAGE_KEY);
-}
-
-export function canAccess(role: UserRole, pathname: string): boolean {
-  if (role === 'مدير') return true;
-  return !ADMIN_ONLY_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }

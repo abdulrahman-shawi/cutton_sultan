@@ -6,6 +6,7 @@ import { Check, Plus, Search } from 'lucide-react';
 import SupplierList from './SupplierList';
 import SupplierModal from './SupplierModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import { SUPPLIERS_STORAGE_KEY, type Supplier } from './types';
 
@@ -50,6 +51,7 @@ export default function SuppliersManager() {
   const [deleting, setDeleting] = useState<Supplier | null>(null);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('suppliers');
 
   useEffect(() => {
     try {
@@ -103,14 +105,16 @@ export default function SuppliersManager() {
             سجّل مورديك واربطهم بالبضاعة المتعامل بها وبالأرصدة الافتتاحية.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModal({ mode: 'create' })}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إضافة مورّد جديد
-        </button>
+        {perms.add && (
+          <button
+            type="button"
+            onClick={() => setModal({ mode: 'create' })}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إضافة مورّد جديد
+          </button>
+        )}
       </div>
 
       <div className="relative max-w-sm mb-4">
@@ -132,6 +136,9 @@ export default function SuppliersManager() {
         <SupplierList
           suppliers={filtered}
           products={products}
+          canAdd={perms.add}
+          canEdit={perms.edit}
+          canDelete={perms.delete}
           onAdd={() => setModal({ mode: 'create' })}
           onEdit={(supplier) => setModal({ mode: 'edit', supplier })}
           onDelete={setDeleting}

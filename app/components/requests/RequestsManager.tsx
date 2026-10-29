@@ -6,6 +6,7 @@ import { Check, Plus, Search } from 'lucide-react';
 import RequestList from './RequestList';
 import RequestModal from './RequestModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from '../customers/types';
 import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
@@ -95,6 +96,7 @@ export default function RequestsManager() {
   const [filter, setFilter] = useState<Filter>('الكل');
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('requests');
 
   useEffect(() => {
     try {
@@ -168,14 +170,16 @@ export default function RequestsManager() {
             سجّل المنتجات التي يطلبها العملاء ولم تكن متوفرة، وتابع توفيرها لاحقاً.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModal({ mode: 'create' })}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          تسجيل طلب جديد
-        </button>
+        {perms.add && (
+          <button
+            type="button"
+            onClick={() => setModal({ mode: 'create' })}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            تسجيل طلب جديد
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-5">
@@ -227,6 +231,9 @@ export default function RequestsManager() {
       ) : (
         <RequestList
           requests={filtered}
+          canAdd={perms.add}
+          canEdit={perms.edit}
+          canDelete={perms.delete}
           onAdd={() => setModal({ mode: 'create' })}
           onEdit={(request) => setModal({ mode: 'edit', request })}
           onDelete={setDeleting}

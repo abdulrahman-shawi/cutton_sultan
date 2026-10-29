@@ -5,6 +5,9 @@ import type { Customer } from './types';
 
 interface CustomerListProps {
   customers: Customer[];
+  canAdd?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onAdd: () => void;
   onEdit: (customer: Customer) => void;
   onDelete: (customer: Customer) => void;
@@ -35,21 +38,31 @@ function BalanceCell({ customer }: { customer: Customer }) {
   );
 }
 
-export default function CustomerList({ customers, onAdd, onEdit, onDelete }: CustomerListProps) {
+export default function CustomerList({
+  customers,
+  canAdd = true,
+  canEdit = true,
+  canDelete = true,
+  onAdd,
+  onEdit,
+  onDelete,
+}: CustomerListProps) {
   if (customers.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
         <Users className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
         <p className="font-semibold text-slate-700 mb-1">لا يوجد عملاء بعد</p>
         <p className="text-sm text-slate-400 mb-5">سجّل عملاءك مع أرصدتهم الافتتاحية لمتابعة الحسابات والفواتير.</p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إضافة عميل
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إضافة عميل
+          </button>
+        )}
       </div>
     );
   }
@@ -86,22 +99,26 @@ export default function CustomerList({ customers, onAdd, onEdit, onDelete }: Cus
                 <BalanceCell customer={customer} />
                 <span className="text-xs text-slate-400">{formatDate(customer.createdAt)}</span>
                 <div className="flex items-center justify-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onEdit(customer)}
-                    aria-label={`تعديل ${customer.name}`}
-                    className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                  >
-                    <Pencil className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(customer)}
-                    aria-label={`حذف ${customer.name}`}
-                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => onEdit(customer)}
+                      aria-label={`تعديل ${customer.name}`}
+                      className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(customer)}
+                      aria-label={`حذف ${customer.name}`}
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
               </li>
             ))}

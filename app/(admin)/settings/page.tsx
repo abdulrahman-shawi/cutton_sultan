@@ -1,6 +1,5 @@
 import SettingsForm from '../../components/settings/SettingsForm';
 import BackupSection from '../../components/settings/BackupSection';
-import UsersSection from '../../components/settings/UsersSection';
 
 export const metadata = {
   title: 'الإعدادات | نظام إدارة العملاء',
@@ -14,7 +13,8 @@ export default function SettingsPage() {
           <p className="eyebrow">إعدادات النظام</p>
           <h1>إعدادات المتجر</h1>
           <p className="page-description">
-            تحكم بالمعلومات الأساسية للمتجر والإعدادات المالية وقنوات التواصل.
+            تحكم بالمعلومات الأساسية للمتجر والإعدادات المالية وقنوات التواصل. إدارة المستخدمين
+            والصلاحيات أصبحت في صفحاتها الخاصة من القائمة الجانبية.
           </p>
         </div>
       </div>
@@ -22,7 +22,6 @@ export default function SettingsPage() {
       <SettingsForm />
       <div className="settings-stack" style={{ marginTop: 20 }}>
         <BackupSection />
-        <UsersSection />
       </div>
     </main>
   );

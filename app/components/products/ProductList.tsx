@@ -9,6 +9,9 @@ interface ProductListProps {
   categories: Category[];
   subcategories: Subcategory[];
   lowStockThreshold: number;
+  canAdd?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onAdd: () => void;
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
@@ -43,6 +46,9 @@ export default function ProductList({
   categories,
   subcategories,
   lowStockThreshold,
+  canAdd = true,
+  canEdit = true,
+  canDelete = true,
   onAdd,
   onEdit,
   onDelete,
@@ -56,14 +62,16 @@ export default function ProductList({
         <p className="text-sm text-slate-400 mb-5">
           أضف منتجاتك مع تفصيلات الألوان والمقاسات وأسعار الجملة والمفرق.
         </p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إضافة منتج
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إضافة منتج
+          </button>
+        )}
       </div>
     );
   }
@@ -156,22 +164,26 @@ export default function ProductList({
                     )}
                   </div>
                   <div className="flex items-center justify-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(product)}
-                      aria-label={`تعديل ${product.name}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                    >
-                      <Pencil className="w-4 h-4" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(product)}
-                      aria-label={`حذف ${product.name}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" aria-hidden="true" />
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(product)}
+                        aria-label={`تعديل ${product.name}`}
+                        className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        <Pencil className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(product)}
+                        aria-label={`حذف ${product.name}`}
+                        className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </li>
               );

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '../components/layout/Sidebar';
 import Header from '../components/layout/Header';
-import { canAccess, getSession, logout, seedDefaultUsers, type Session } from '../components/auth/auth';
+import { getSession, logout, seedDefaultUsers, type Session } from '../components/auth/auth';
+import { AUTH_CHANGED_EVENT, canAccessPath, getDefaultPath } from '../components/auth/permissions';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -13,20 +14,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    seedDefaultUsers();
+  const applySession = useCallback(() => {
     const current = getSession();
     if (!current) {
+      setSession(null);
+      setChecked(false);
       router.replace('/login');
       return;
     }
-    if (!canAccess(current.role, pathname)) {
-      router.replace('/');
+    if (!canAccessPath(current.roleId, pathname)) {
+      router.replace(getDefaultPath(current.roleId));
       return;
     }
     setSession(current);
     setChecked(true);
   }, [router, pathname]);
+
+  useEffect(() => {
+    seedDefaultUsers();
+    applySession();
+  }, [applySession]);
+
+  // إعادة التحقق فوراً إذا عدّل مدير الصلاحيات أو المستخدمين أثناء الجلسة
+  useEffect(() => {
+    window.addEventListener(AUTH_CHANGED_EVENT, applySession);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, applySession);
+  }, [applySession]);
 
   const handleLogout = () => {
     logout();

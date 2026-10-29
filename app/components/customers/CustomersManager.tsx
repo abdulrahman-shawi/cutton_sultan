@@ -6,6 +6,7 @@ import { Check, Plus, Search } from 'lucide-react';
 import CustomerList from './CustomerList';
 import CustomerModal from './CustomerModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from './types';
 
 type ModalState = { mode: 'create' } | { mode: 'edit'; customer: Customer } | null;
@@ -28,6 +29,7 @@ export default function CustomersManager() {
   const [deleting, setDeleting] = useState<Customer | null>(null);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('customers');
 
   useEffect(() => {
     try {
@@ -81,14 +83,16 @@ export default function CustomersManager() {
             سجّل عملاءك مع أرصدتهم الافتتاحية لمتابعة الحسابات والفواتير لاحقاً.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModal({ mode: 'create' })}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إضافة عميل جديد
-        </button>
+        {perms.add && (
+          <button
+            type="button"
+            onClick={() => setModal({ mode: 'create' })}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إضافة عميل جديد
+          </button>
+        )}
       </div>
 
       <div className="relative max-w-sm mb-4">
@@ -109,6 +113,9 @@ export default function CustomersManager() {
       ) : (
         <CustomerList
           customers={filtered}
+          canAdd={perms.add}
+          canEdit={perms.edit}
+          canDelete={perms.delete}
           onAdd={() => setModal({ mode: 'create' })}
           onEdit={(customer) => setModal({ mode: 'edit', customer })}
           onDelete={setDeleting}

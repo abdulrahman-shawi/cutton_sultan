@@ -4,6 +4,9 @@ import { requestItemsLabel, requestTotalQuantity, type CustomerRequest } from '.
 
 interface RequestListProps {
   requests: CustomerRequest[];
+  canAdd?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onAdd: () => void;
   onEdit: (request: CustomerRequest) => void;
   onDelete: (request: CustomerRequest) => void;
@@ -15,7 +18,16 @@ function formatDate(timestamp: number): string {
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
-export default function RequestList({ requests, onAdd, onEdit, onDelete, onToggleStatus }: RequestListProps) {
+export default function RequestList({
+  requests,
+  canAdd = true,
+  canEdit = true,
+  canDelete = true,
+  onAdd,
+  onEdit,
+  onDelete,
+  onToggleStatus,
+}: RequestListProps) {
   if (requests.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
@@ -24,14 +36,16 @@ export default function RequestList({ requests, onAdd, onEdit, onDelete, onToggl
         <p className="text-sm text-slate-400 mb-5">
           عندما يطلب عميل منتجاً غير متوفر، سجّل الطلب هنا لمتابعته وإحضاره.
         </p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          تسجيل طلب
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            تسجيل طلب
+          </button>
+        )}
       </div>
     );
   }
@@ -82,42 +96,61 @@ export default function RequestList({ requests, onAdd, onEdit, onDelete, onToggl
                   </div>
                   <span className="text-sm text-slate-600 text-center">{requestTotalQuantity(request.items)}</span>
                   <div>
-                    <button
-                      type="button"
-                      onClick={() => onToggleStatus(request)}
-                      title={isPending ? 'اضغط عند توفر المنتج' : 'اضغط للإرجاع إلى قيد الانتظار'}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                        isPending
-                          ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
-                          : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                      }`}
-                    >
-                      {isPending ? (
-                        <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                      ) : (
-                        <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
-                      )}
-                      {request.status}
-                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => onToggleStatus(request)}
+                        title={isPending ? 'اضغط عند توفر المنتج' : 'اضغط للإرجاع إلى قيد الانتظار'}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                          isPending
+                            ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                            : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {isPending ? (
+                          <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        )}
+                        {request.status}
+                      </button>
+                    ) : (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold ${
+                          isPending ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                        }`}
+                      >
+                        {isPending ? (
+                          <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        )}
+                        {request.status}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-slate-400">{formatDate(request.createdAt)}</span>
                   <div className="flex items-center justify-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(request)}
-                      aria-label={`تعديل طلب ${requestItemsLabel(request.items)}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                    >
-                      <Pencil className="w-4 h-4" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(request)}
-                      aria-label={`حذف طلب ${requestItemsLabel(request.items)}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" aria-hidden="true" />
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(request)}
+                        aria-label={`تعديل طلب ${requestItemsLabel(request.items)}`}
+                        className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        <Pencil className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(request)}
+                        aria-label={`حذف طلب ${requestItemsLabel(request.items)}`}
+                        className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </li>
               );

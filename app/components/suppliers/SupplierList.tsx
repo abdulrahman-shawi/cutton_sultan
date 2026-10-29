@@ -7,6 +7,9 @@ import type { Supplier } from './types';
 interface SupplierListProps {
   suppliers: Supplier[];
   products: Product[];
+  canAdd?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onAdd: () => void;
   onEdit: (supplier: Supplier) => void;
   onDelete: (supplier: Supplier) => void;
@@ -52,21 +55,32 @@ function GoodsCell({ supplier, products }: { supplier: Supplier; products: Produ
   );
 }
 
-export default function SupplierList({ suppliers, products, onAdd, onEdit, onDelete }: SupplierListProps) {
+export default function SupplierList({
+  suppliers,
+  products,
+  canAdd = true,
+  canEdit = true,
+  canDelete = true,
+  onAdd,
+  onEdit,
+  onDelete,
+}: SupplierListProps) {
   if (suppliers.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
         <Truck className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
         <p className="font-semibold text-slate-700 mb-1">لا يوجد موردون بعد</p>
         <p className="text-sm text-slate-400 mb-5">سجّل مورديك واربطهم بالبضاعة المتعامل بها وبالأرصدة الافتتاحية.</p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إضافة مورّد
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إضافة مورّد
+          </button>
+        )}
       </div>
     );
   }
@@ -103,22 +117,26 @@ export default function SupplierList({ suppliers, products, onAdd, onEdit, onDel
                 <BalanceCell supplier={supplier} />
                 <span className="text-xs text-slate-400">{formatDate(supplier.createdAt)}</span>
                 <div className="flex items-center justify-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onEdit(supplier)}
-                    aria-label={`تعديل ${supplier.name}`}
-                    className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                  >
-                    <Pencil className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(supplier)}
-                    aria-label={`حذف ${supplier.name}`}
-                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => onEdit(supplier)}
+                      aria-label={`تعديل ${supplier.name}`}
+                      className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(supplier)}
+                      aria-label={`حذف ${supplier.name}`}
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
               </li>
             ))}

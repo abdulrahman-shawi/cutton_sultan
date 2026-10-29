@@ -6,6 +6,7 @@ import { AlertCircle, Check, RotateCcw, Save } from 'lucide-react';
 import StoreInfoSection from './StoreInfoSection';
 import FinanceSection from './FinanceSection';
 import ContactSection from './ContactSection';
+import { usePermissions } from '../auth/usePermissions';
 import {
   defaultSettings,
   SETTINGS_STORAGE_KEY,
@@ -28,6 +29,7 @@ type Feedback = { kind: 'success' | 'error'; message: string } | null;
 export default function SettingsForm() {
   const [settings, setSettings] = useState<StoreSettings>(loadSettings);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const perms = usePermissions('settings');
 
   const handleChange = (field: keyof StoreSettings, value: string) => {
     setSettings((prev) => ({ ...prev, [field]: value }));
@@ -55,19 +57,33 @@ export default function SettingsForm() {
 
   return (
     <form className="settings-stack" onSubmit={handleSubmit}>
-      <StoreInfoSection settings={settings} onChange={handleChange} />
-      <FinanceSection settings={settings} onChange={handleChange} />
-      <ContactSection settings={settings} onChange={handleChange} />
+      <fieldset
+        disabled={!perms.edit}
+        className="settings-stack border-0 p-0 m-0 min-w-0 [&_input]:disabled:opacity-60 [&_input]:disabled:cursor-not-allowed"
+      >
+        <StoreInfoSection settings={settings} onChange={handleChange} />
+        <FinanceSection settings={settings} onChange={handleChange} />
+        <ContactSection settings={settings} onChange={handleChange} />
+      </fieldset>
 
       <div className="form-actions">
-        <button type="submit" className="primary-button">
-          <Save size={15} aria-hidden="true" />
-          حفظ الإعدادات
-        </button>
-        <button type="button" className="secondary-button" onClick={handleReset}>
-          <RotateCcw size={14} aria-hidden="true" />
-          استعادة الافتراضي
-        </button>
+        {perms.edit ? (
+          <>
+            <button type="submit" className="primary-button">
+              <Save size={15} aria-hidden="true" />
+              حفظ الإعدادات
+            </button>
+            <button type="button" className="secondary-button" onClick={handleReset}>
+              <RotateCcw size={14} aria-hidden="true" />
+              استعادة الافتراضي
+            </button>
+          </>
+        ) : (
+          <p className="form-feedback error">
+            <AlertCircle size={14} aria-hidden="true" />
+            لديك صلاحية عرض فقط — لا يمكنك تعديل الإعدادات.
+          </p>
+        )}
         {feedback && (
           <p className={`form-feedback ${feedback.kind}`} role="status">
             {feedback.kind === 'success' ? (

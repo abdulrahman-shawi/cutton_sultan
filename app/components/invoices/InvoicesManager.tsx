@@ -7,6 +7,7 @@ import InvoiceList from './InvoiceList';
 import InvoiceModal from './InvoiceModal';
 import InvoiceDetailsModal from './InvoiceDetailsModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from '../customers/types';
 import { SUPPLIERS_STORAGE_KEY, type Supplier } from '../suppliers/types';
 import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
@@ -110,6 +111,7 @@ export default function InvoicesManager() {
   const [deleting, setDeleting] = useState<Invoice | null>(null);
   const [filter, setFilter] = useState<Filter>('الكل');
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('invoices');
 
   useEffect(() => {
     try {
@@ -189,14 +191,16 @@ export default function InvoicesManager() {
             المنتجات تلقائياً عند حفظ الفاتورة أو حذفها.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModal({ mode: 'create' })}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إصدار فاتورة جديدة
-        </button>
+        {perms.add && (
+          <button
+            type="button"
+            onClick={() => setModal({ mode: 'create' })}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إصدار فاتورة جديدة
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -230,6 +234,8 @@ export default function InvoicesManager() {
 
       <InvoiceList
         invoices={filtered}
+        canAdd={perms.add}
+        canDelete={perms.delete}
         onAdd={() => setModal({ mode: 'create' })}
         onView={setViewing}
         onDelete={setDeleting}

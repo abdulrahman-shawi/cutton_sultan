@@ -3,6 +3,7 @@
 
 import { useRef, useState } from 'react';
 import { AlertCircle, Check, Download, Upload } from 'lucide-react';
+import { usePermissions } from '../auth/usePermissions';
 
 // كل مفاتيح بيانات النظام في التخزين المحلي — يجب أن تطابق المفاتيح المعرفة في أنواع كل وحدة
 const DATA_KEYS = [
@@ -24,6 +25,7 @@ type Feedback = { kind: 'success' | 'error'; message: string } | null;
 export default function BackupSection() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const perms = usePermissions('settings');
 
   const handleExport = () => {
     try {
@@ -101,6 +103,8 @@ export default function BackupSection() {
         <button
           type="button"
           className="secondary-button"
+          disabled={!perms.edit}
+          title={perms.edit ? undefined : 'لديك صلاحية عرض فقط'}
           onClick={() => fileInputRef.current?.click()}
         >
           <Upload size={14} aria-hidden="true" />

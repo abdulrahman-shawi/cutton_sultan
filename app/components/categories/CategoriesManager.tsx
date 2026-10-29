@@ -6,6 +6,7 @@ import { Check, Plus } from 'lucide-react';
 import CategoryList from './CategoryList';
 import CategoryModal from './CategoryModal';
 import ConfirmDialog from './ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import {
   CATEGORIES_STORAGE_KEY,
   seedCategories,
@@ -32,6 +33,7 @@ export default function CategoriesManager() {
   const [modal, setModal] = useState<ModalState>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('departments');
 
   useEffect(() => {
     try {
@@ -82,18 +84,23 @@ export default function CategoriesManager() {
             نظّم منتجات المتجر إلى أقسام لتسهيل البحث والفوترة.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModal({ mode: 'create' })}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إضافة قسم جديد
-        </button>
+        {perms.add && (
+          <button
+            type="button"
+            onClick={() => setModal({ mode: 'create' })}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إضافة قسم جديد
+          </button>
+        )}
       </div>
 
       <CategoryList
         categories={categories}
+        canAdd={perms.add}
+        canEdit={perms.edit}
+        canDelete={perms.delete}
         onAdd={() => setModal({ mode: 'create' })}
         onEdit={(category) => setModal({ mode: 'edit', category })}
         onDelete={setDeleting}

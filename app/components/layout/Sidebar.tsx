@@ -2,9 +2,9 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
 import { X } from 'lucide-react';
-import { canAccess, getSession } from '../auth/auth';
+import { useSessionRole } from '../auth/usePermissions';
+import { canAccessPath } from '../auth/permissions';
 
 const navItems = [
   { name: 'التحليلات (الداشبورد)', href: '/', icon: 'dashboard' },
@@ -17,6 +17,8 @@ const navItems = [
   { name: 'التبديلات والمرتجعات', href: '/returns', icon: 'returns' },
   { name: 'العملاء', href: '/customers', icon: 'customers' },
   { name: 'الموردين', href: '/suppliers', icon: 'suppliers' },
+  { name: 'المستخدمون', href: '/users', icon: 'users' },
+  { name: 'الصلاحيات', href: '/permissions', icon: 'permissions' },
   { name: 'الإعدادات', href: '/settings', icon: 'settings' },
 ] as const;
 
@@ -30,6 +32,8 @@ const icons = {
   reports: <><path d="M3 3v18h18" /><path d="M7 15v3M12 10v8M17 6v12" /></>,
   returns: <><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
   customers: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  users: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  permissions: <><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z" /><path d="m9 11.5 2 2 4-4" /></>,
   suppliers: <><path d="M10 17h4V5H2v12h3" /><path d="M14 9h4l4 4v4h-2M14 17h-4" /><circle cx="7.5" cy="17.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.6-1.4-2.4L7.3 15a8 8 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.6a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.6 1.4 2.4-1.4 1.1a8 8 0 0 1-.1 2Z" /></>,
 };
@@ -41,8 +45,8 @@ interface SidebarProps {
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
-  const [role] = useState(() => getSession()?.role ?? 'موظف');
-  const visibleItems = navItems.filter((item) => canAccess(role, item.href));
+  const { roleId } = useSessionRole();
+  const visibleItems = navItems.filter((item) => canAccessPath(roleId, item.href));
 
   return (
     <>

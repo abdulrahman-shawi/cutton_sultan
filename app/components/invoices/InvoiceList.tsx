@@ -1,9 +1,11 @@
 // components/invoices/InvoiceList.tsx — جدول الفواتير
-import { Eye, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Eye, FileText, Plus, Trash2 } from 'lucide-react';
 import { formatMoney, type Invoice, type InvoiceType } from './types';
 
 interface InvoiceListProps {
   invoices: Invoice[];
+  canAdd?: boolean;
+  canDelete?: boolean;
   onAdd: () => void;
   onView: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
@@ -26,7 +28,14 @@ const statusStyles: Record<Invoice['status'], string> = {
   'غير مدفوعة': 'bg-rose-50 text-rose-500',
 };
 
-export default function InvoiceList({ invoices, onAdd, onView, onDelete }: InvoiceListProps) {
+export default function InvoiceList({
+  invoices,
+  canAdd = true,
+  canDelete = true,
+  onAdd,
+  onView,
+  onDelete,
+}: InvoiceListProps) {
   if (invoices.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
@@ -35,14 +44,16 @@ export default function InvoiceList({ invoices, onAdd, onView, onDelete }: Invoi
         <p className="text-sm text-slate-400 mb-5">
           أصدر فاتورة مقبوضات أو مدفوعات أو مصاريف يومية.
         </p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إصدار فاتورة
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إصدار فاتورة
+          </button>
+        )}
       </div>
     );
   }
@@ -100,14 +111,16 @@ export default function InvoiceList({ invoices, onAdd, onView, onDelete }: Invoi
                   >
                     <Eye className="w-4 h-4" aria-hidden="true" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(invoice)}
-                    aria-label={`حذف فاتورة رقم ${invoice.number}`}
-                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(invoice)}
+                      aria-label={`حذف فاتورة رقم ${invoice.number}`}
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
               </li>
             ))}

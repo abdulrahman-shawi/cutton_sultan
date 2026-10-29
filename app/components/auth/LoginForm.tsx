@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, LogIn } from 'lucide-react';
 import { getSession, login } from './auth';
+import { getDefaultPath } from './permissions';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -13,9 +14,10 @@ export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // جلسة قائمة → مباشرة إلى اللوحة
+  // جلسة قائمة → مباشرة إلى أول صفحة مسموح بها للصلاحية
   useEffect(() => {
-    if (getSession()) router.replace('/');
+    const session = getSession();
+    if (session) router.replace(getDefaultPath(session.roleId));
   }, [router]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -28,7 +30,7 @@ export default function LoginForm() {
       setSubmitting(false);
       return;
     }
-    router.replace('/');
+    router.replace(getDefaultPath(session.roleId));
   };
 
   return (

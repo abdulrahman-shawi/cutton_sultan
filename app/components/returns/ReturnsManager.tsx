@@ -7,6 +7,7 @@ import ReturnList from './ReturnList';
 import ReturnModal from './ReturnModal';
 import ReturnDetailsModal from './ReturnDetailsModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { usePermissions } from '../auth/usePermissions';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from '../customers/types';
 import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
@@ -56,6 +57,7 @@ export default function ReturnsManager() {
   const [deleting, setDeleting] = useState<ReturnRecord | null>(null);
   const [filter, setFilter] = useState<Filter>('الكل');
   const [toast, setToast] = useState<string | null>(null);
+  const perms = usePermissions('returns');
 
   useEffect(() => {
     try {
@@ -157,14 +159,16 @@ export default function ReturnsManager() {
             الحذف، ويُحتسب فرق المبلغ بين المرتجع والبدائل.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          تسجيل عملية جديدة
-        </button>
+        {perms.add && (
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            تسجيل عملية جديدة
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -195,6 +199,8 @@ export default function ReturnsManager() {
 
       <ReturnList
         records={filtered}
+        canAdd={perms.add}
+        canDelete={perms.delete}
         onAdd={() => setModalOpen(true)}
         onView={setViewing}
         onDelete={setDeleting}

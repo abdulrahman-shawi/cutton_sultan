@@ -4,6 +4,9 @@ import type { Category, CategoryStatus } from './types';
 
 interface CategoryListProps {
   categories: Category[];
+  canAdd?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onAdd: () => void;
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
@@ -23,21 +26,31 @@ function StatusBadge({ status }: { status: CategoryStatus }) {
   );
 }
 
-export default function CategoryList({ categories, onAdd, onEdit, onDelete }: CategoryListProps) {
+export default function CategoryList({
+  categories,
+  canAdd = true,
+  canEdit = true,
+  canDelete = true,
+  onAdd,
+  onEdit,
+  onDelete,
+}: CategoryListProps) {
   if (categories.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
         <Package className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
         <p className="font-semibold text-slate-700 mb-1">لا توجد أقسام بعد</p>
         <p className="text-sm text-slate-400 mb-5">ابدأ بتنظيم منتجاتك بإضافة أول قسم.</p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          إضافة قسم
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            إضافة قسم
+          </button>
+        )}
       </div>
     );
   }
@@ -76,22 +89,26 @@ export default function CategoryList({ categories, onAdd, onEdit, onDelete }: Ca
             </div>
             <StatusBadge status={category.status} />
             <div className="flex items-center justify-center gap-1">
-              <button
-                type="button"
-                onClick={() => onEdit(category)}
-                aria-label={`تعديل ${category.name}`}
-                className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-              >
-                <Pencil className="w-4 h-4" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(category)}
-                aria-label={`حذف ${category.name}`}
-                className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" aria-hidden="true" />
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(category)}
+                  aria-label={`تعديل ${category.name}`}
+                  className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" aria-hidden="true" />
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(category)}
+                  aria-label={`حذف ${category.name}`}
+                  className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                </button>
+              )}
             </div>
           </li>
         ))}
