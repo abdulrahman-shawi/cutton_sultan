@@ -4,19 +4,7 @@
 import { useRef, useState } from 'react';
 import { AlertCircle, Check, Download, Upload } from 'lucide-react';
 import { usePermissions } from '../auth/usePermissions';
-
-// كل مفاتيح بيانات النظام في التخزين المحلي — يجب أن تطابق المفاتيح المعرفة في أنواع كل وحدة
-const DATA_KEYS = [
-  'sultan_categories',
-  'sultan_subcategories',
-  'sultan_products',
-  'sultan_customers',
-  'sultan_suppliers',
-  'sultan_invoices',
-  'sultan_requests',
-  'sultan_returns',
-  'sultan_store_settings',
-] as const;
+import { DATA_KEYS, pushAllToServer, saveData } from '../../lib/data';
 
 const BACKUP_VERSION = 1;
 
@@ -55,7 +43,7 @@ export default function BackupSection() {
 
   const handleImportFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const parsed = JSON.parse(String(reader.result)) as { version?: number; data?: Record<string, unknown> };
         if (!parsed || typeof parsed !== 'object' || !parsed.data || typeof parsed.data !== 'object') {
@@ -68,8 +56,9 @@ export default function BackupSection() {
           return;
         }
         for (const key of known) {
-          window.localStorage.setItem(key, JSON.stringify(parsed.data![key]));
+          saveData(key, parsed.data![key]);
         }
+        await pushAllToServer();
         setFeedback({
           kind: 'success',
           message: `تم استيراد ${known.length} من أصل ${DATA_KEYS.length} مجموعات بيانات — جارٍ إعادة التحميل`,

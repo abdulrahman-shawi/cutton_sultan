@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Calendar, Download, FileText, Wallet } from 'lucide-react';
 import { INVOICES_STORAGE_KEY, formatMoney, type Invoice } from '../invoices/types';
+import { loadDollarRate } from '../settings/types';
+import { convertUsdToSyp } from '../invoices/types';
 import {
   balancesCsv,
   computePartyBalances,
@@ -90,6 +92,8 @@ export default function ReportsManager() {
   );
   const totals = useMemo(() => computeTotals(filtered), [filtered]);
   const balances = useMemo(() => computePartyBalances(invoices), [invoices]);
+  const dollarRate = loadDollarRate();
+  const combinedNetSyp = totals.netSyp + (dollarRate > 0 ? convertUsdToSyp(totals.netUsd, dollarRate) : 0);
 
   const summaryCards = [
     { label: 'إجمالي المقبوضات', syp: totals.receiptsSyp, usd: totals.receiptsUsd, tone: 'text-emerald-600' },
@@ -169,6 +173,12 @@ export default function ReportsManager() {
             <p className="text-2xl font-bold">{formatMoney(totals.netSyp, 'SYP')}</p>
             <p className="text-lg font-bold">{formatMoney(totals.netUsd, 'USD')}</p>
           </div>
+          {dollarRate > 0 && (totals.netSyp !== 0 || totals.netUsd !== 0) && (
+            <p className="text-sm text-slate-500 mt-2">
+              الصافي الموحّد بسعر صرف {dollarRate}:{' '}
+              <strong className={netTone}>{formatMoney(Math.round(combinedNetSyp), 'SYP')}</strong>
+            </p>
+          )}
           <p className="text-xs text-slate-400 mt-3">عدد الفواتير ضمن الفترة: {totals.count}</p>
         </div>
 

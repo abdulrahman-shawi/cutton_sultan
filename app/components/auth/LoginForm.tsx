@@ -20,11 +20,11 @@ export default function LoginForm() {
     if (session) router.replace(getDefaultPath(session.roleId));
   }, [router]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
-    const session = login(username, password);
+    const session = await login(username, password);
     if (!session) {
       setError('اسم المستخدم أو كلمة المرور غير صحيحة');
       setSubmitting(false);

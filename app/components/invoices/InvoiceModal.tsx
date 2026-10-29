@@ -398,6 +398,23 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
               {totals.SYP === 0 && totals.USD === 0 && <span className="text-slate-400">0</span>}
             </div>
 
+            {rateValue > 0 && (totals.SYP > 0 || totals.USD > 0) && (
+              <p className="text-xs text-slate-500">
+                <span className="text-slate-400">المعادل بسعر الصرف {formatPrice(rateValue)}: </span>
+                {totals.SYP > 0 && (
+                  <strong className="text-slate-600">
+                    ≈ {formatMoney(Math.round((totals.SYP / rateValue) * 100) / 100, 'USD')}
+                  </strong>
+                )}
+                {totals.SYP > 0 && totals.USD > 0 && <span className="text-slate-400"> · </span>}
+                {totals.USD > 0 && (
+                  <strong className="text-slate-600">
+                    ≈ {formatMoney(convertUsdToSyp(totals.USD, rateValue), 'SYP')}
+                  </strong>
+                )}
+              </p>
+            )}
+
             {status === 'مدفوعة جزئياً' && presentCurrencies.length > 0 && (
               <div className="grid sm:grid-cols-2 gap-3">
                 {presentCurrencies.includes('SYP') && (

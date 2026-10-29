@@ -10,6 +10,7 @@ import { usePermissions } from '../auth/usePermissions';
 import { CUSTOMERS_STORAGE_KEY, type Customer } from '../customers/types';
 import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
+import DateRangeFilter, { inDateRange } from '../common/DateRangeFilter';
 import {
   REQUESTS_STORAGE_KEY,
   REQUEST_STATUSES,
@@ -95,6 +96,8 @@ export default function RequestsManager() {
   const [deleting, setDeleting] = useState<CustomerRequest | null>(null);
   const [filter, setFilter] = useState<Filter>('الكل');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const perms = usePermissions('requests');
 
@@ -118,6 +121,7 @@ export default function RequestsManager() {
   const trimmedSearch = search.trim();
   const filtered = requests
     .filter((request) => filter === 'الكل' || request.status === filter)
+    .filter((request) => inDateRange(request.createdAt, dateFrom, dateTo))
     .filter(
       (request) =>
         !trimmedSearch ||
@@ -213,15 +217,18 @@ export default function RequestsManager() {
         ))}
       </div>
 
-      <div className="relative max-w-sm mb-4">
-        <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" aria-hidden="true" />
-        <input
-          type="text"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="بحث بالمنتج أو العميل أو الهاتف..."
-          className="w-full pl-4 pr-10 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-        />
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="relative max-w-sm flex-1 min-w-[220px]">
+          <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" aria-hidden="true" />
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="بحث بالمنتج أو العميل أو الهاتف..."
+            className="w-full pl-4 pr-10 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+          />
+        </div>
+        <DateRangeFilter from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
       </div>
 
       {trimmedSearch && filtered.length === 0 ? (

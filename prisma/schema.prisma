@@ -1,0 +1,93 @@
+// مخطط قاعدة البيانات — PostgreSQL
+// جدول مستقل لكل صفحة/كيان: كل سجل = صف برقم تعريف حقيقي، وبياناته الكاملة بعمود JSONB
+// (الحقول المتداخلة كتفصيلات المنتج وبنود الفاتورة تبقى داخل سجلها — ترقية مستقبلية سهلة لأعمدة مستقلة)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model Subcategory {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model Customer {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model Supplier {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model Invoice {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model ReturnRecord {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model CustomerRequest {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+// إعدادات المتجر: سجل واحد (id = "store")
+model StoreSetting {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model AppUser {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model AppRole {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuthSession {
+  token     String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  detail    String   @default("")
+  createdAt DateTime @default(now())
+}

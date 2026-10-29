@@ -8,6 +8,7 @@ export type PageKey =
   | 'products'
   | 'requests'
   | 'invoices'
+  | 'pos'
   | 'returns'
   | 'customers'
   | 'suppliers'
@@ -51,6 +52,7 @@ export const APP_PAGES: AppPage[] = [
   { key: 'products', label: 'المنتجات', path: '/products' },
   { key: 'requests', label: 'توصيات العملاء', path: '/requests' },
   { key: 'invoices', label: 'الفواتير', path: '/invoices' },
+  { key: 'pos', label: 'نقطة البيع السريعة', path: '/pos' },
   { key: 'returns', label: 'التبديلات والمرتجعات', path: '/returns' },
   { key: 'customers', label: 'العملاء', path: '/customers' },
   { key: 'suppliers', label: 'الموردين', path: '/suppliers' },
@@ -131,6 +133,7 @@ function employeePermissions(): Record<PageKey, PagePermission> {
       page.key === 'products' ||
       page.key === 'requests' ||
       page.key === 'invoices' ||
+      page.key === 'pos' ||
       page.key === 'returns' ||
       page.key === 'customers' ||
       page.key === 'suppliers'
@@ -146,7 +149,14 @@ export function seedDefaultRoles(): void {
   if (existing.length > 0) {
     // إكمال الصفحات الناقصة للأدوار المحفوظة من إصدارات سابقة
     saveRoles(
-      existing.map((role) => ({ ...role, permissions: normalizePermissions(role.permissions) }))
+      existing.map((role) => {
+        const permissions = normalizePermissions(role.permissions);
+        // منح «نقطة البيع» لدور الموظف الافتراضي إن أُضيفت حديثاً
+        if (role.id === EMPLOYEE_ROLE_ID && !role.permissions.pos?.view) {
+          permissions.pos = { view: true, add: true, edit: true, delete: true };
+        }
+        return { ...role, permissions };
+      })
     );
     return;
   }

@@ -13,6 +13,7 @@ import { PRODUCTS_STORAGE_KEY, type Product } from '../products/types';
 import { SUBCATEGORIES_STORAGE_KEY, type Subcategory } from '../subcategories/types';
 import { RETURNS_STORAGE_KEY, type ReturnRecord, type ReturnType } from './types';
 import { formatMoney } from '../invoices/types';
+import DateRangeFilter, { inDateRange } from '../common/DateRangeFilter';
 
 type Filter = 'الكل' | ReturnType;
 
@@ -56,6 +57,8 @@ export default function ReturnsManager() {
   const [viewing, setViewing] = useState<ReturnRecord | null>(null);
   const [deleting, setDeleting] = useState<ReturnRecord | null>(null);
   const [filter, setFilter] = useState<Filter>('الكل');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const perms = usePermissions('returns');
 
@@ -81,7 +84,10 @@ export default function ReturnsManager() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const filtered = filter === 'الكل' ? records : records.filter((record) => record.type === filter);
+  const filtered = records.filter(
+    (record) =>
+      (filter === 'الكل' || record.type === filter) && inDateRange(record.createdAt, dateFrom, dateTo)
+  );
 
   // ملخص الإجماليات لمراجعة حركة الإرجاع والتبديل سريعاً
   const summary = { returnedSyp: 0, returnedUsd: 0, replacementSyp: 0, replacementUsd: 0, refundedSyp: 0, refundedUsd: 0 };
@@ -180,21 +186,24 @@ export default function ReturnsManager() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-5">
-        {(['الكل', 'مرتجع', 'تبديل'] as Filter[]).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setFilter(option)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-              filter === option
-                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
-            }`}
-          >
-            {option}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="flex flex-wrap gap-2">
+          {(['الكل', 'مرتجع', 'تبديل'] as Filter[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setFilter(option)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                filter === option
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+        <DateRangeFilter from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
       </div>
 
       <ReturnList

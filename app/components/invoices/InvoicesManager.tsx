@@ -19,6 +19,7 @@ import {
   type Invoice,
   type InvoiceType,
 } from './types';
+import DateRangeFilter, { inDateRange } from '../common/DateRangeFilter';
 
 type ModalState = { mode: 'create' } | null;
 type Filter = 'الكل' | InvoiceType;
@@ -85,7 +86,7 @@ function loadInvoices(): Invoice[] {
 
 // تعديل مخزون التفصيلات المرتبطة بفاتورة: نقصان في المقبوضات وزيادة في المدفوعات
 // sign = 1 عند حفظ فاتورة جديدة، و -1 عند حذفها لعكس أثرها على المخزون
-function adjustStock(products: Product[], invoice: Invoice, sign: 1 | -1): Product[] {
+export function adjustStock(products: Product[], invoice: Invoice, sign: 1 | -1): Product[] {
   if (invoice.type === 'مصاريف يومية') return products;
   const factor = (invoice.type === 'مقبوضات' ? -1 : 1) * sign;
   return products.map((product) => {
@@ -110,6 +111,8 @@ export default function InvoicesManager() {
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [deleting, setDeleting] = useState<Invoice | null>(null);
   const [filter, setFilter] = useState<Filter>('الكل');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const perms = usePermissions('invoices');
 
@@ -135,7 +138,10 @@ export default function InvoicesManager() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const filtered = filter === 'الكل' ? invoices : invoices.filter((invoice) => invoice.type === filter);
+  const filtered = invoices.filter(
+    (invoice) =>
+      (filter === 'الكل' || invoice.type === filter) && inDateRange(invoice.createdAt, dateFrom, dateTo)
+  );
 
   // ملخص الإجماليات لمراجعة الوضع المالي سريعاً
   const summary = { receiptsSyp: 0, receiptsUsd: 0, paymentsSyp: 0, paymentsUsd: 0, expensesSyp: 0, expensesUsd: 0, remainingSyp: 0, remainingUsd: 0 };
@@ -215,21 +221,24 @@ export default function InvoicesManager() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-5">
-        {(['الكل', ...INVOICE_TYPES] as Filter[]).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setFilter(option)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-              filter === option
-                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
-            }`}
-          >
-            {option}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="flex flex-wrap gap-2">
+          {(['الكل', ...INVOICE_TYPES] as Filter[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setFilter(option)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                filter === option
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+        <DateRangeFilter from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
       </div>
 
       <InvoiceList

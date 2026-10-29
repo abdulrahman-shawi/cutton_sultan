@@ -101,22 +101,52 @@ export function getSession(): Session | null {
   }
 }
 
-export function login(username: string, password: string): Session | null {
+function storeSession(session: Session): Session {
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  return session;
+}
+
+// تسجيل الدخول: الخادم أولاً (جلسة httpOnly حقيقية) — وعند غياب الاتصال يُتحقق محلياً
+export async function login(username: string, password: string): Promise<Session | null> {
+  try {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (response.ok) {
+      const data = (await response.json()) as { user: { id: string; username: string; name: string; roleId: string; role: string } };
+      return storeSession({
+        userId: data.user.id,
+        username: data.user.username,
+        name: data.user.name,
+        roleId: data.user.roleId,
+        role: data.user.role,
+        loginAt: Date.now(),
+      });
+    }
+    if (response.status === 401) return null;
+    // أخطاء أخرى من الخادم (400/500) — نجرّب التحقق المحلي كاحتياط
+  } catch {
+    // الخادم غير متاح — وضع دون اتصال
+  }
+
   const user = loadUsers().find((entry) => entry.username === username.trim().toLowerCase());
   if (!user || user.passwordHash !== hashPassword(password)) return null;
   const role = getRoleById(user.roleId);
-  const session: Session = {
+  return storeSession({
     userId: user.id,
     username: user.username,
     name: user.name,
     roleId: user.roleId,
     role: role?.name ?? 'بدون صلاحية',
     loginAt: Date.now(),
-  };
-  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-  return session;
+  });
 }
 
 export function logout(): void {
+  void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {
+    // الخادم غير متاح — الجلسة المحلية تُزال دائماً أدناه
+  });
   window.localStorage.removeItem(SESSION_STORAGE_KEY);
 }
