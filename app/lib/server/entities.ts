@@ -1,6 +1,6 @@
 // lib/server/entities.ts — ربط مفاتيح البيانات بجداولها: كل مجموعة جدول مستقل وكل سجل صف برقم تعريف
 import { PrismaClient } from '@prisma/client';
-import { prisma } from './store';
+import { prisma, withDbRetry } from './store';
 
 // المفاتيح التي يقبلها النظام ونوع تخزينها: مجموعة (مصفوفة سجلات) أو مفرد (إعدادات)
 export const ENTITY_MAP: Record<string, { table: keyof PrismaClient; kind: 'collection' | 'singleton' }> = {
@@ -44,14 +44,14 @@ function recordId(record: unknown): string {
 export async function readCollection(key: string): Promise<unknown[] | null> {
   const entry = ENTITY_MAP[key];
   if (!entry || entry.kind !== 'collection') return null;
-  const rows = await delegateFor(key).findMany();
+  const rows = await withDbRetry(() => delegateFor(key).findMany());
   return rows.map((row) => row.data);
 }
 
 export async function readSingleton(key: string): Promise<unknown | null> {
   const entry = ENTITY_MAP[key];
   if (!entry || entry.kind !== 'singleton') return null;
-  const rows = await delegateFor(key).findMany();
+  const rows = await withDbRetry(() => delegateFor(key).findMany());
   return rows.length > 0 ? rows[0].data : null;
 }
 
@@ -62,20 +62,24 @@ export async function writeCollection(key: string, value: unknown): Promise<void
   const records = Array.isArray(value) ? value : [];
   const delegate = delegateFor(key);
   const data = records.map((record) => ({ id: recordId(record), data: record as object }));
-  await prisma.$transaction([
-    (delegate as { deleteMany(): Promise<unknown> }).deleteMany() as never,
-    (delegate as { createMany(args: { data: { id: string; data: object }[] }): Promise<unknown> }).createMany({ data }) as never,
-  ]);
+  await withDbRetry(() =>
+    prisma.$transaction([
+      (delegate as { deleteMany(): Promise<unknown> }).deleteMany() as never,
+      (delegate as { createMany(args: { data: { id: string; data: object }[] }): Promise<unknown> }).createMany({ data }) as never,
+    ])
+  );
 }
 
 export async function writeSingleton(key: string, value: unknown): Promise<void> {
   const entry = ENTITY_MAP[key];
   if (!entry || entry.kind !== 'singleton') return;
-  await delegateFor(key).upsert({
-    where: { id: 'store' },
-    create: { id: 'store', data: (value ?? {}) as object },
-    update: { data: (value ?? {}) as object },
-  });
+  await withDbRetry(() =>
+    delegateFor(key).upsert({
+      where: { id: 'store' },
+      create: { id: 'store', data: (value ?? {}) as object },
+      update: { data: (value ?? {}) as object },
+    })
+  );
 }
 
 // قراءة أي مفتاح (مجموعة أو مفرد) — للاستجابات الموحدة

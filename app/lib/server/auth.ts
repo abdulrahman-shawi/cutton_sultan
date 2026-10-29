@@ -1,7 +1,7 @@
 // lib/server/auth.ts — مصادقة الخادم: جلسات بكوكي httpOnly وكلمات مرور مشفرة بـ scrypt
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
-import { prisma } from './store';
+import { prisma, withDbRetry } from './store';
 
 export const SESSION_COOKIE = 'sultan_token';
 const SESSION_DAYS = 7;
@@ -41,12 +41,12 @@ export function upgradeHash(password: string, stored: string): string | null {
 export async function createSession(userId: string): Promise<string> {
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000);
-  await prisma.authSession.create({ data: { token, userId, expiresAt } });
+  await withDbRetry(() => prisma.authSession.create({ data: { token, userId, expiresAt } }));
   return token;
 }
 
 export async function destroySession(token: string): Promise<void> {
-  await prisma.authSession.deleteMany({ where: { token } });
+  await withDbRetry(() => prisma.authSession.deleteMany({ where: { token } }));
 }
 
 export interface ServerUser {
@@ -67,7 +67,7 @@ export async function findUserByUsername(username: string): Promise<(ServerUser 
 export async function getSessionUser(): Promise<ServerUser | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const session = await prisma.authSession.findUnique({ where: { token } });
+  const session = await withDbRetry(() => prisma.authSession.findUnique({ where: { token } }));
   if (!session) return null;
   if (session.expiresAt.getTime() < Date.now()) {
     await destroySession(token);
