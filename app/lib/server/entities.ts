@@ -96,8 +96,40 @@ export async function writeAny(key: string, value: unknown): Promise<void> {
   else await writeSingleton(key, value);
 }
 
+function rowId(record: unknown): string | null {
+  const id = (record as { id?: unknown }).id;
+  return typeof id === 'string' && id ? id : null;
+}
+
+// إدراج أو تحديث سجل واحد دون المساس ببقية السجلات — تطبيق عمليات قائمة الانتظار
+export async function upsertRecord(key: string, record: Record<string, unknown>): Promise<boolean> {
+  const entry = ENTITY_MAP[key];
+  if (!entry || entry.kind !== 'collection') return false;
+  const id = rowId(record);
+  if (!id) return false;
+  await withDbRetry(() =>
+    delegateFor(key).upsert({ where: { id }, create: { id, data: record }, update: { data: record } }),
+  );
+  return true;
+}
+
+// حذف سجل واحد برقم تعريفه إن وُجد — deleteMany لا تفشل عند غياب الصف
+export async function deleteRecord(key: string, id: string): Promise<void> {
+  const entry = ENTITY_MAP[key];
+  if (!entry || entry.kind !== 'collection') return;
+  await withDbRetry(() => delegateFor(key).deleteMany({ where: { id } }));
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// دمج قيمة واردة على مفرد (إعدادات) بحيث تغلب مفاتيحها الواردة — لعملية «putSingleton» من قائمة الانتظار
+export async function mergeSingletonIncoming(key: string, value: Record<string, unknown>): Promise<void> {
+  const entry = ENTITY_MAP[key];
+  if (!entry || entry.kind !== 'singleton') return;
+  const existing = await readSingleton(key);
+  await writeSingleton(key, isPlainObject(existing) ? { ...existing, ...value } : value);
 }
 
 // كل العناصر سجلات تحمل رقم تعريف نصي — شرط قابلية الدمج دون تكرار

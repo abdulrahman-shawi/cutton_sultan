@@ -25,8 +25,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
 
     let session = local;
-    // تحقق خادمي عند توفر الاتصال: جلسة صالحة؟ ثم دورة العودة —
-    // ارفع البيانات المحلية (يُضاف الناقص للخادم دون حذف)، ثم اسحب ما ينقص المحلي قبل عرض الصفحات
+    // فحص الاتصال عند فتح الموقع: جلسة صالحة على الخادم؟ متصل —
+    // ارفع قائمة الانتظار (عمليات أُجريت دون اتصال) وامسحها، ثم اسحب نسخة الخادم المرجعية
+    // قبل عرض الصفحات. غير متصل (استثناء/401؟) — 401 ينهي الجلسة، وغياب الاتصال يكمل
+    // بالبيانات المحلية التي تعمل دون اتصال.
     try {
       const response = await fetch('/api/auth/me', { cache: 'no-store' });
       if (response.ok) {
@@ -66,7 +68,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     installStorageMirror();
     seedDefaultUsers();
+    // عودة الاتصال أثناء الجلسة: ارفع قائمة الانتظار وامسحها، ثم اسحب النسخة المحدثة من الخادم
+    const handleOnline = () => {
+      void (async () => {
+        await uploadOfflineBuffer();
+        await syncFromServer();
+      })();
+    };
+    window.addEventListener('online', handleOnline);
     void applySession();
+    return () => window.removeEventListener('online', handleOnline);
   }, [applySession]);
 
   // إعادة التحقق فوراً إذا عدّل مدير الصلاحيات أو المستخدمين أثناء الجلسة

@@ -31,7 +31,8 @@ export function loadData<T>(key: string): T | null {
   }
 }
 
-// حفظ محلي فوري + محاولة مزامنة صامتة مع الخادم (تُتجاهل عند غياب الاتصال)
+// حفظ محلي فوري — المرآة المثبتة في installStorageMirror ترفع القيمة إلى الخادم فوراً
+// عند توفر الاتصال، وعند غيابه تُسجَّل الفروقات في قائمة الانتظار لترفع عند عودة الاتصال
 export function saveData(key: string, value: unknown): void {
   if (typeof window === 'undefined') return;
   try {
@@ -39,35 +40,155 @@ export function saveData(key: string, value: unknown): void {
   } catch {
     // التخزين غير متاح في هذا المتصفح
   }
-  mirrorToServer(key, value);
 }
 
-function mirrorToServer(key: string, value: unknown): void {
+// قائمة انتظار عمليات أُجريت دون اتصال: إضافة (put) أو تعديل أو حذف (delete) سجلاً سجلاً
+export interface SyncOp {
+  key: DataKey;
+  op: 'put' | 'delete' | 'putSingleton';
+  id?: string;
+  record?: Record<string, unknown>;
+  at: number;
+}
+
+const SYNC_QUEUE_KEY = 'sultan_sync_queue';
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+type IdentifiedRecord = Record<string, unknown> & { id: string };
+
+// كل العناصر سجلات تحمل رقم تعريف نصي — شرط حساب الفروق دون تكرار
+function hasIds(items: unknown[]): items is IdentifiedRecord[] {
+  return items.every((item) => isPlainObject(item) && typeof item.id === 'string' && item.id.length > 0);
+}
+
+function isIdentified(item: unknown): item is IdentifiedRecord {
+  return isPlainObject(item) && typeof item.id === 'string' && item.id.length > 0;
+}
+
+// حساب الفرق بين القيمة القديمة والجديدة لمفتاح: السجلات المضافة/المعدلة عمليات put،
+// والسجلات المغايرة عمليات delete — فينطبق الإضافة والتعديل والحذف كلها على الخادم لاحقاً
+function computeDelta(key: DataKey, previous: unknown, next: unknown): SyncOp[] {
+  if (Array.isArray(next)) {
+    if (!hasIds(next)) return [];
+    const previousRecords = Array.isArray(previous) ? previous.filter(isIdentified) : [];
+    const previousById = new Map(previousRecords.map((record) => [record.id, record] as const));
+    const nextIds = new Set(next.map((record) => record.id));
+    const ops: SyncOp[] = [];
+    for (const record of next) {
+      const old = previousById.get(record.id);
+      if (!old || JSON.stringify(old) !== JSON.stringify(record)) {
+        ops.push({ key, op: 'put', id: record.id, record, at: Date.now() });
+      }
+    }
+    for (const record of previousRecords) {
+      if (!nextIds.has(record.id)) ops.push({ key, op: 'delete', id: record.id, at: Date.now() });
+    }
+    return ops;
+  }
+  if (isPlainObject(next)) return [{ key, op: 'putSingleton', record: next, at: Date.now() }];
+  return [];
+}
+
+function queueKeyOf(op: SyncOp): string {
+  return op.op === 'putSingleton' ? op.key : `${op.key}:${op.id ?? ''}`;
+}
+
+function readQueue(): SyncOp[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(SYNC_QUEUE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (op): op is SyncOp =>
+        isPlainObject(op) && isDataKey(String(op.key)) && (op.op === 'put' || op.op === 'delete' || op.op === 'putSingleton'),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeQueue(ops: SyncOp[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(ops));
+  } catch {
+    // التخزين غير متاح
+  }
+}
+
+// إلحاق الفروق بالقائمة مع استبدال آخر عملية لنفس السجل — الحالة النهائية هي الأحدث دائماً
+function appendToQueue(ops: SyncOp[]): void {
+  if (ops.length === 0) return;
+  const merged = new Map(readQueue().map((op) => [queueKeyOf(op), op]));
+  for (const op of ops) merged.set(queueKeyOf(op), op);
+  writeQueue(Array.from(merged.values()));
+}
+
+function clearQueue(): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(SYNC_QUEUE_KEY);
+}
+
+function queueDelta(key: string, previous: unknown, next: unknown): void {
+  if (!isDataKey(key)) return;
+  appendToQueue(computeDelta(key, previous, next));
+}
+
+function mirrorToServer(key: string, value: unknown, previous: unknown = null): void {
   if (!isDataKey(key) || typeof window === 'undefined') return;
   void fetch('/api/store', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key, value }),
-  }).catch(() => {
-    // الخادم غير متاح — تبقى البيانات محلية وتُرفع عند عودة الاتصال عبر syncFromServer
-  });
+  })
+    .then((response) => {
+      // الخادم متصل لكنه رفض الحفظ (انتهاء جلسة/عطل مؤقت) — نحتفظ بالفرق ليُرفع بعد إعادة الدخول
+      if (!response.ok && response.status !== 403) queueDelta(key, previous, value);
+    })
+    .catch(() => {
+      // لا اتصال — الفرق بين القديم والجديد يُسجَّل في قائمة الانتظار ويُرفع عند عودة الاتصال
+      queueDelta(key, previous, value);
+    });
 }
 
 // مرآة شفافة: اعتراض كل كتابة على localStorage (من أي مدير أو مكوّن) ورفعها للخادم.
-// تُثبَّت مرة واحدة عند دخول المنطقة الإدارية — بيانات الجلسة خارج قائمة المفاتيح فلا تُرفع.
+// عند توفر الاتصال تصل القيمة لقاعدة البيانات فوراً (الإضافة والتعديل والحذف معاً)،
+// وعند غيابه تُحفظ محلياً وتُسجَّل فروقاتها في قائمة الانتظار. تُثبَّت مرة واحدة عند دخول المنطقة الإدارية.
 let mirrorInstalled = false;
 export function installStorageMirror(): void {
   if (typeof window === 'undefined' || mirrorInstalled) return;
   mirrorInstalled = true;
   const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+  const originalGetItem = window.localStorage.getItem.bind(window.localStorage);
   window.localStorage.setItem = (key: string, value: string) => {
+    let previous: unknown = null;
+    let hasPrevious = false;
+    if (isDataKey(key)) {
+      const oldRaw = originalGetItem(key);
+      if (oldRaw !== null) {
+        try {
+          previous = JSON.parse(oldRaw);
+          hasPrevious = true;
+        } catch {
+          hasPrevious = false;
+        }
+      }
+    }
     originalSetItem(key, value);
     if (!isDataKey(key)) return;
+    let parsed: unknown;
     try {
-      mirrorToServer(key, JSON.parse(value));
+      parsed = JSON.parse(value);
     } catch {
       // قيمة غير صالحة — لا نرفعها
+      return;
     }
+    mirrorToServer(key, parsed, hasPrevious ? previous : null);
   };
 }
 
@@ -75,55 +196,29 @@ export interface StoreSnapshot {
   [key: string]: unknown;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-// كل العناصر سجلات تحمل رقم تعريف نصي — شرط قابلية الدمج دون تكرار
-function hasIds(items: unknown[]): items is Record<string, unknown>[] {
-  return items.every((item) => isPlainObject(item) && typeof item.id === 'string' && item.id.length > 0);
-}
-
-// دمج ما ورد من الخادم مع المخزن محلياً دون حذف أي سجل: السجلات المحلية تبقى بمكانها وترتيبها
-// ويُحدَّث محتواها من نظيرها على الخادم إن وُجد، ويُضاف فقط ما ليس له نظير محلي برقم التعريف.
-// القيم المفردة (الإعدادات) يغلب فيها الخادم عند الاختلاف.
-function mergeWithLocal(localRaw: string | null, incoming: unknown): { value: unknown; changed: boolean } {
-  if (localRaw === null) return { value: incoming, changed: true };
+// هل فقد الخادم بيانات هذه المجموعة؟ مجموعة (أو إعدادات) فارغة على الخادم مع وجود بيانات محلية
+// تعني أن قاعدة البيانات أُعيدت/فقدت — عندها تُرفع المحلية إليه بدل مسحها من الجهاز
+function serverCollectionLost(localRaw: string | null, incoming: unknown): boolean {
+  if (localRaw === null) return false;
   let local: unknown;
   try {
     local = JSON.parse(localRaw);
   } catch {
-    // مفتاح محلي تالف — تُعوَّض قيمته من الخادم
-    return { value: incoming, changed: true };
+    return false;
   }
-  if (Array.isArray(local) && Array.isArray(incoming)) {
-    if (!hasIds(local) || !hasIds(incoming)) {
-      const localIsEmpty = local.length === 0;
-      return localIsEmpty ? { value: incoming, changed: true } : { value: local, changed: false };
-    }
-    const incomingById = new Map(incoming.map((item) => [item.id, item]));
-    const localIds = new Set(local.map((item) => item.id));
-    const merged = [
-      ...local.map((item) => incomingById.get(item.id) ?? item),
-      ...incoming.filter((item) => !localIds.has(item.id)),
-    ];
-    const serialized = JSON.stringify(merged);
-    return serialized === localRaw ? { value: local, changed: false } : { value: merged, changed: true };
+  if (Array.isArray(incoming) && incoming.length === 0) {
+    return Array.isArray(local) && local.length > 0;
   }
-  if (isPlainObject(local) && isPlainObject(incoming)) {
-    const serialized = JSON.stringify(incoming);
-    return serialized === localRaw ? { value: local, changed: false } : { value: incoming, changed: true };
+  if (isPlainObject(incoming) && Object.keys(incoming).length === 0) {
+    return isPlainObject(local) && Object.keys(local).length > 0;
   }
-  const localIsEmpty =
-    (Array.isArray(local) && local.length === 0) ||
-    (isPlainObject(local) && Object.keys(local).length === 0);
-  if (localIsEmpty) return { value: incoming, changed: true };
-  return { value: local, changed: false };
+  return false;
 }
 
-// سحب مفاتيح الخادم إلى التخزين المحلي — يُستدعى بعد تسجيل الدخول قبل عرض الصفحات.
-// الدمج تجميعي: تُضاف السجلات غير الموجودة محلياً فقط ولا يُحذف أو يُستبدل أي سجل محلي.
-// إن كان الخادم جديداً فارغاً تُرفع إليه البيانات المحلية بدلاً من ذلك (بذر أول جهاز).
+// سحب مفاتيح الخادم إلى التخزين المحلي — يُستدعى بعد رفع قائمة الانتظار وقبل عرض الصفحات.
+// الخادم هو قاعدة البيانات المرجعية: تُستبدل المجموعات المحلية بنظيراتها عليه حرفياً فينتقل
+// حذف وتعديل بقية الأجهزة إلى هذا الجهاز. لا يُفقد شيء: كل تغيير محلي غير مرفوع كان محفوظاً
+// في قائمة الانتظار وطُبِّق على الخادم للتو قبل هذا السحب (صمام الخادم الفارغ أعلاه يحمي من المسح عند فقد قاعدة البيانات).
 export async function syncFromServer(): Promise<boolean> {
   try {
     const response = await fetch('/api/store', { cache: 'no-store' });
@@ -134,10 +229,27 @@ export async function syncFromServer(): Promise<boolean> {
     for (const key of DATA_KEYS) {
       if (!(key in snapshot)) continue;
       const incoming = snapshot[key];
-      if (incoming === null || incoming === undefined) continue; // لا شيء يُضاف من هذا المفتاح
+      if (incoming === null || incoming === undefined) continue; // لم تُضبط هذه القيمة على الخادم بعد
       anyKey = true;
-      const { value, changed } = mergeWithLocal(window.localStorage.getItem(key), incoming);
-      if (changed) window.localStorage.setItem(key, JSON.stringify(value));
+      const localRaw = window.localStorage.getItem(key);
+      if (serverCollectionLost(localRaw, incoming)) {
+        // خادم فقد هذه المجموعة: المحلي هو النسخة الوحيدة — ارفعه إليه بدل مسحه
+        try {
+          const localValue: unknown = localRaw ? JSON.parse(localRaw) : null;
+          if (localValue !== null) {
+            void fetch('/api/store', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key, value: localValue }),
+            }).catch(() => {});
+          }
+        } catch {
+          // محلي تالف — نكتفي بعدم المسح
+        }
+        continue;
+      }
+      const serialized = JSON.stringify(incoming);
+      if (localRaw !== serialized) window.localStorage.setItem(key, serialized);
     }
     if (!anyKey) await pushAllToServer();
     return true;
@@ -148,7 +260,7 @@ export async function syncFromServer(): Promise<boolean> {
 
 // رفع كل المفاتيح المحلية إلى الخادم باستبدال كامل — يُستدعى بعد استيراد نسخة احتياطية
 // (استعادة محتوى ملف النسخة حرفياً بما فيه الحذف) وبعد أول دخول لبذر قاعدة بيانات فارغة.
-// مزامنة فتح المتصفح العادية تمر عبر uploadOfflineBuffer ولا تستخدم هذا الوضع.
+// مزامنة فتح المتصفح العادية تمر عبر uploadOfflineBuffer (قائمة الانتظار) ولا تستخدم هذا الوضع.
 export async function pushAllToServer(): Promise<void> {
   if (typeof window === 'undefined') return;
   const snapshot: Record<string, unknown> = { mode: 'replace' };
@@ -172,41 +284,23 @@ export async function pushAllToServer(): Promise<void> {
     // الخادم غير متاح — تبقى البيانات محلية
   }
 }
-
-// حذف مفاتيح من التخزين المحلي (بعد رفعها بنجاح إلى الخادم)
-export function clearLocalKeys(keys: string[]): void {
-  if (typeof window === 'undefined') return;
-  for (const key of keys) window.localStorage.removeItem(key);
-}
-
-// دورة العودة بعد انقطاع: ارفع البيانات المحلية إلى الخادم ليُضاف ما ينقصه فقط.
-// تبقى المفاتيح المحلية كما هي — التخزين المحلي هو نسخة العمل الدائمة، فحذفها بعد الرفع
-// قد يُفقد كل شيء إن فشل السحب الذي يليه. تعمل لأي مستخدم بغض النظر عن دوره
-// (المفاتيح الحساسة يقبلها الخادم من المدير فقط ويعيد الباقي مقبولاً).
-// عند غياب الاتصال تفشل بصمت ويبقى كل شيء محلياً — العمل دون اتصال غير متأثر.
+// دورة العودة بعد انقطاع: ارفع قائمة الانتظار (العمليات المسجلة أثناء غياب الاتصال) إلى
+// الخادم ليُطبَّق كل إضافة/تعديل/حذف سجلاً سجلاً، ثم امسح القائمة من localStorage.
+// لا تمس هذه العمليات بيانات بقية الأجهزة، وتكرار الرفع آمِن لأن كل عملية idempotent.
+// عند فشل الرفع (لا اتصال/رفض) تبقى القائمة كما هي للمحاولة التالية — لا يضيع شيء.
 export async function uploadOfflineBuffer(): Promise<string[]> {
   if (typeof window === 'undefined') return [];
-  const snapshot: Record<string, unknown> = {};
-  for (const key of DATA_KEYS) {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) continue;
-    try {
-      snapshot[key] = JSON.parse(raw);
-    } catch {
-      // مفتاح تالف — نتجاوزه
-    }
-  }
-  if (Object.keys(snapshot).length === 0) return [];
+  const ops = readQueue();
+  if (ops.length === 0) return [];
   try {
     const response = await fetch('/api/sync/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(snapshot),
+      body: JSON.stringify({ ops }),
     });
     if (!response.ok) return [];
-    const result = (await response.json()) as { accepted?: string[] };
-    const accepted = Array.isArray(result.accepted) ? result.accepted : [];
-    return accepted;
+    clearQueue(); // نجح الرفع — تُحذف العمليات المرفوعة من قائمة الانتظار المحلية
+    return ['sync-queue'];
   } catch {
     return [];
   }
