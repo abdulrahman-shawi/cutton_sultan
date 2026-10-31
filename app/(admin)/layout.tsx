@@ -26,7 +26,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     let session = local;
     // تحقق خادمي عند توفر الاتصال: جلسة صالحة؟ ثم دورة العودة —
-    // ارفع ذاكرة الانتظار المحلية واحذفها، ثم اسحب النسخة المحدثة قبل عرض الصفحات
+    // ارفع البيانات المحلية (يُضاف الناقص للخادم دون حذف)، ثم اسحب ما ينقص المحلي قبل عرض الصفحات
     try {
       const response = await fetch('/api/auth/me', { cache: 'no-store' });
       if (response.ok) {

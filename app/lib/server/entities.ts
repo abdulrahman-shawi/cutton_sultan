@@ -96,6 +96,41 @@ export async function writeAny(key: string, value: unknown): Promise<void> {
   else await writeSingleton(key, value);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// كل العناصر سجلات تحمل رقم تعريف نصي — شرط قابلية الدمج دون تكرار
+function hasIds(items: unknown[]): items is Record<string, unknown>[] {
+  return items.every((item) => isPlainObject(item) && typeof item.id === 'string' && item.id.length > 0);
+}
+
+// دمج قيمة واردة مع المخزن على الخادم دون حذف أي سجل: السجلات الموجودة على الخادم
+// تحتفظ بمحتواها وترتيبها (الخادم هو المرجع حتى لا تطمس نسخة جهاز قديم تعديلات أحدث)،
+// وتُضاف فقط السجلات الواردة التي ليس لها نظير برقم التعريف.
+// تُستخدم في مزامنة فتح المتصفح حتى لا يمسح جهاز قديم أو شبه فارغ بيانات بقية الأجهزة.
+export async function mergeAny(key: string, value: unknown): Promise<void> {
+  const entry = ENTITY_MAP[key];
+  if (!entry) return;
+  if (entry.kind === 'singleton') {
+    const existing = await readSingleton(key);
+    if (isPlainObject(existing) && isPlainObject(value)) {
+      await writeSingleton(key, { ...value, ...existing });
+      return;
+    }
+    await writeSingleton(key, value);
+    return;
+  }
+  const existing = await readCollection(key);
+  if (Array.isArray(existing) && Array.isArray(value) && hasIds(existing) && hasIds(value)) {
+    const existingIds = new Set(existing.map((item) => item.id));
+    const merged = [...existing, ...value.filter((item) => !existingIds.has(item.id))];
+    await writeCollection(key, merged);
+    return;
+  }
+  await writeCollection(key, value);
+}
+
 // لقطة كاملة لكل المفاتيح — تُبنى من الجداول ثم تُرسل للعميل ككائن {مفتاح: قيمة}
 export async function readSnapshot(): Promise<Record<string, unknown>> {
   const snapshot: Record<string, unknown> = {};

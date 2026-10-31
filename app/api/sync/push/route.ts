@@ -1,9 +1,10 @@
 // app/api/sync/push/route.ts — رفع ذاكرة الانتظار المحلية (offline buffer) عند عودة الاتصال
 // أي مستخدم مسجّل — أيًّا كان دوره — يرفع تغييرات عمله على البيانات التشغيلية؛
 // المفاتيح الحساسة (الإعدادات/المستخدمون/الأدوار) تقبل من المدير فقط حتى لا تُمسح صلاحيات بجلسة قديمة.
-// بعد نجاح الرفع يحذف العميل المفاتيح المرفوعة من localStorage ثم يسحب النسخة المحدثة.
+// الدمج تجميعي افتراضياً: يُضاف ما ليس موجوداً على الخادم ولا يُحذف أي سجل — فتح المتصفح لا يمسح بيانات أحد.
+// باستثناء mode = 'replace' (استيراد نسخة احتياطية فقط) حيث تُستبدل المجموعات محتوىً وحذفاً كما في الملف.
 import { NextResponse } from 'next/server';
-import { isAllowedKey, writeAny } from '../../../lib/server/entities';
+import { isAllowedKey, mergeAny, writeAny } from '../../../lib/server/entities';
 import { logAudit } from '../../../lib/server/store';
 import { getSessionUser } from '../../../lib/server/auth';
 import { ADMIN_ROLE_ID } from '../../../lib/server/seed';
@@ -25,8 +26,9 @@ export async function POST(request: Request) {
 
   const accepted: string[] = [];
   const skipped: string[] = [];
+  const replace = body?.mode === 'replace';
   for (const [key, value] of Object.entries(body)) {
-    if (!isAllowedKey(key)) {
+    if (key === 'mode' || !isAllowedKey(key)) {
       skipped.push(key);
       continue;
     }
@@ -34,7 +36,8 @@ export async function POST(request: Request) {
       skipped.push(key);
       continue;
     }
-    await writeAny(key, value);
+    if (replace) await writeAny(key, value);
+    else await mergeAny(key, value);
     accepted.push(key);
   }
 

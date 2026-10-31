@@ -75,7 +75,54 @@ export interface StoreSnapshot {
   [key: string]: unknown;
 }
 
-// سحب كل مفاتيح الخادم إلى التخزين المحلي — يُستدعى بعد تسجيل الدخول قبل عرض الصفحات.
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// كل العناصر سجلات تحمل رقم تعريف نصي — شرط قابلية الدمج دون تكرار
+function hasIds(items: unknown[]): items is Record<string, unknown>[] {
+  return items.every((item) => isPlainObject(item) && typeof item.id === 'string' && item.id.length > 0);
+}
+
+// دمج ما ورد من الخادم مع المخزن محلياً دون حذف أي سجل: السجلات المحلية تبقى بمكانها وترتيبها
+// ويُحدَّث محتواها من نظيرها على الخادم إن وُجد، ويُضاف فقط ما ليس له نظير محلي برقم التعريف.
+// القيم المفردة (الإعدادات) يغلب فيها الخادم عند الاختلاف.
+function mergeWithLocal(localRaw: string | null, incoming: unknown): { value: unknown; changed: boolean } {
+  if (localRaw === null) return { value: incoming, changed: true };
+  let local: unknown;
+  try {
+    local = JSON.parse(localRaw);
+  } catch {
+    // مفتاح محلي تالف — تُعوَّض قيمته من الخادم
+    return { value: incoming, changed: true };
+  }
+  if (Array.isArray(local) && Array.isArray(incoming)) {
+    if (!hasIds(local) || !hasIds(incoming)) {
+      const localIsEmpty = local.length === 0;
+      return localIsEmpty ? { value: incoming, changed: true } : { value: local, changed: false };
+    }
+    const incomingById = new Map(incoming.map((item) => [item.id, item]));
+    const localIds = new Set(local.map((item) => item.id));
+    const merged = [
+      ...local.map((item) => incomingById.get(item.id) ?? item),
+      ...incoming.filter((item) => !localIds.has(item.id)),
+    ];
+    const serialized = JSON.stringify(merged);
+    return serialized === localRaw ? { value: local, changed: false } : { value: merged, changed: true };
+  }
+  if (isPlainObject(local) && isPlainObject(incoming)) {
+    const serialized = JSON.stringify(incoming);
+    return serialized === localRaw ? { value: local, changed: false } : { value: incoming, changed: true };
+  }
+  const localIsEmpty =
+    (Array.isArray(local) && local.length === 0) ||
+    (isPlainObject(local) && Object.keys(local).length === 0);
+  if (localIsEmpty) return { value: incoming, changed: true };
+  return { value: local, changed: false };
+}
+
+// سحب مفاتيح الخادم إلى التخزين المحلي — يُستدعى بعد تسجيل الدخول قبل عرض الصفحات.
+// الدمج تجميعي: تُضاف السجلات غير الموجودة محلياً فقط ولا يُحذف أو يُستبدل أي سجل محلي.
 // إن كان الخادم جديداً فارغاً تُرفع إليه البيانات المحلية بدلاً من ذلك (بذر أول جهاز).
 export async function syncFromServer(): Promise<boolean> {
   try {
@@ -85,10 +132,12 @@ export async function syncFromServer(): Promise<boolean> {
     if (typeof window === 'undefined') return true;
     let anyKey = false;
     for (const key of DATA_KEYS) {
-      if (key in snapshot) {
-        anyKey = true;
-        window.localStorage.setItem(key, JSON.stringify(snapshot[key]));
-      }
+      if (!(key in snapshot)) continue;
+      const incoming = snapshot[key];
+      if (incoming === null || incoming === undefined) continue; // لا شيء يُضاف من هذا المفتاح
+      anyKey = true;
+      const { value, changed } = mergeWithLocal(window.localStorage.getItem(key), incoming);
+      if (changed) window.localStorage.setItem(key, JSON.stringify(value));
     }
     if (!anyKey) await pushAllToServer();
     return true;
@@ -97,10 +146,12 @@ export async function syncFromServer(): Promise<boolean> {
   }
 }
 
-// رفع كل المفاتيح المحلية إلى الخادم — يُستدعى بعد أول دخول ناجح لبذر قاعدة البيانات وبعد استيراد نسخة احتياطية
+// رفع كل المفاتيح المحلية إلى الخادم باستبدال كامل — يُستدعى بعد استيراد نسخة احتياطية
+// (استعادة محتوى ملف النسخة حرفياً بما فيه الحذف) وبعد أول دخول لبذر قاعدة بيانات فارغة.
+// مزامنة فتح المتصفح العادية تمر عبر uploadOfflineBuffer ولا تستخدم هذا الوضع.
 export async function pushAllToServer(): Promise<void> {
   if (typeof window === 'undefined') return;
-  const snapshot: Record<string, unknown> = {};
+  const snapshot: Record<string, unknown> = { mode: 'replace' };
   for (const key of DATA_KEYS) {
     const raw = window.localStorage.getItem(key);
     if (!raw) continue;
@@ -110,7 +161,7 @@ export async function pushAllToServer(): Promise<void> {
       // مفتاح تالف — نتجاوزه
     }
   }
-  if (Object.keys(snapshot).length === 0) return;
+  if (Object.keys(snapshot).length === 1) return;
   try {
     await fetch('/api/sync/push', {
       method: 'POST',
@@ -128,8 +179,10 @@ export function clearLocalKeys(keys: string[]): void {
   for (const key of keys) window.localStorage.removeItem(key);
 }
 
-// دورة العودة بعد انقطاع: ارفع ذاكرة الانتظار المحلية إلى الخادم، واحذف المرفوع من localStorage.
-// تعمل لأي مستخدم بغض النظر عن دوره (المفاتيح الحساسة يقبلها الخادم من المدير فقط ويعيد الباقي مقبولاً).
+// دورة العودة بعد انقطاع: ارفع البيانات المحلية إلى الخادم ليُضاف ما ينقصه فقط.
+// تبقى المفاتيح المحلية كما هي — التخزين المحلي هو نسخة العمل الدائمة، فحذفها بعد الرفع
+// قد يُفقد كل شيء إن فشل السحب الذي يليه. تعمل لأي مستخدم بغض النظر عن دوره
+// (المفاتيح الحساسة يقبلها الخادم من المدير فقط ويعيد الباقي مقبولاً).
 // عند غياب الاتصال تفشل بصمت ويبقى كل شيء محلياً — العمل دون اتصال غير متأثر.
 export async function uploadOfflineBuffer(): Promise<string[]> {
   if (typeof window === 'undefined') return [];
@@ -153,7 +206,6 @@ export async function uploadOfflineBuffer(): Promise<string[]> {
     if (!response.ok) return [];
     const result = (await response.json()) as { accepted?: string[] };
     const accepted = Array.isArray(result.accepted) ? result.accepted : [];
-    clearLocalKeys(accepted);
     return accepted;
   } catch {
     return [];
