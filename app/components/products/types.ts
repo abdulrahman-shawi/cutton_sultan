@@ -48,6 +48,8 @@ export const COLOR_SUGGESTIONS = [
 export const SIZE_SUGGESTIONS = [
   'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'فري سايز',
   'مقاس 1', 'مقاس 2', 'مقاس 3', 'مقاس 4', 'مقاس 5',
+  'قصير', 'وسط', 'عالي',
+  '2', '4', '6', '8', '10', '12', '14', '16',
 ];
 
 export const PRODUCTS_STORAGE_KEY = 'sultan_products';
