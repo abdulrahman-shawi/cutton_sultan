@@ -25,7 +25,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'غير مسجل الدخول' }, { status: 401 });
-  let body: { key?: string; value?: unknown };
+  let body: { key?: string; value?: unknown; base?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -38,8 +38,10 @@ export async function PUT(request: Request) {
   if (!(await canWriteKey(user.roleId, key))) {
     return NextResponse.json({ error: 'هذه البيانات للمدير فقط' }, { status: 403 });
   }
-  await writeAny(key, body.value);
+  // الطابع المرجعي: آخر وقت تعديل سحبه العميل — الخادم لا يحذف ولا يستبدل ما هو أحدث منه
+  const base = typeof body?.base === 'string' ? body.base : null;
+  const serverTime = await writeAny(key, body.value, base);
   await logAudit(user.id, 'store.put', key);
   const value = await readAny(key);
-  return NextResponse.json({ ok: true, key, value });
+  return NextResponse.json({ ok: true, key, value, serverTime });
 }

@@ -1,6 +1,7 @@
 // app/api/sync/push/route.ts — رفع ذاكرة الانتظار المحلية (offline buffer) عند عودة الاتصال
 // أي مستخدم مسجّل — أيًّا كان دوره — يرفع تغييرات عمله على البيانات التشغيلية؛
 // المفاتيح الحساسة (الإعدادات/المستخدمون/الأدوار) تقبل من المدير فقط حتى لا تُمسح صلاحيات بجلسة قديمة.
+// كل مفتاح يُرفع مع طابعه المرجعي (__base) فلا يمسح سجلات على الخادم أحدث مما سحبه هذا الجهاز.
 // بعد نجاح الرفع يحذف العميل المفاتيح المرفوعة من localStorage ثم يسحب النسخة المحدثة.
 import { NextResponse } from 'next/server';
 import { isAllowedKey, writeAny } from '../../../lib/server/entities';
@@ -23,8 +24,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'جسم الطلب غير صالح' }, { status: 400 });
   }
 
+  // الطوابع المرجعية لكل مفتاح: آخر وقت تعديل سحبه العميل من الخادم
+  const baseMap = (body.__base ?? {}) as Record<string, unknown>;
+  delete body.__base;
+
   const accepted: string[] = [];
   const skipped: string[] = [];
+  const serverTime: Record<string, string> = {};
   for (const [key, value] of Object.entries(body)) {
     if (!isAllowedKey(key)) {
       skipped.push(key);
@@ -34,10 +40,11 @@ export async function POST(request: Request) {
       skipped.push(key);
       continue;
     }
-    await writeAny(key, value);
+    const base = typeof baseMap[key] === 'string' ? (baseMap[key] as string) : null;
+    serverTime[key] = await writeAny(key, value, base);
     accepted.push(key);
   }
 
   await logAudit(user.id, 'sync.push', `accepted=${accepted.join(',') || 'none'}`);
-  return NextResponse.json({ ok: true, accepted, skipped });
+  return NextResponse.json({ ok: true, accepted, skipped, serverTime });
 }
