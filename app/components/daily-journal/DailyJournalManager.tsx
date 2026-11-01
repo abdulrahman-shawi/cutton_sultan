@@ -5,9 +5,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, CalendarDays, Check, Plus, Scale } from 'lucide-react';
 import JournalList from './JournalList';
 import JournalEntryModal from './JournalEntryModal';
+import SalesProfitAnalysis from './SalesProfitAnalysis';
 import ConfirmDialog from '../categories/ConfirmDialog';
 import { usePermissions } from '../auth/usePermissions';
 import type { Invoice } from '../invoices/types';
+import type { Product } from '../products/types';
 import {
   computeTotals,
   DAILY_JOURNAL_STORAGE_KEY,
@@ -46,6 +48,18 @@ function loadInvoices(): Invoice[] {
   }
 }
 
+function loadProducts(): Product[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem('sultan_products');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Product[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function formatDayLabel(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00`);
   return date.toLocaleDateString('ar-SY-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -54,6 +68,7 @@ function formatDayLabel(dateString: string): string {
 export default function DailyJournalManager() {
   const [entries, setEntries] = useState<JournalEntry[]>(loadEntries);
   const [invoices] = useState<Invoice[]>(loadInvoices);
+  const [products] = useState<Product[]>(loadProducts);
   const [selectedDay, setSelectedDay] = useState(todayDateString);
   const [modal, setModal] = useState<ModalState>(null);
   const [deleting, setDeleting] = useState<JournalEntry | null>(null);
@@ -230,6 +245,8 @@ export default function DailyJournalManager() {
         onEdit={handleEditRow}
         onDelete={handleDeleteRow}
       />
+
+      <SalesProfitAnalysis day={selectedDay} invoices={invoices} products={products} />
 
       {modal && (
         <JournalEntryModal
