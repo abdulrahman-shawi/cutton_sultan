@@ -8,6 +8,7 @@ export const DATA_KEYS = [
   'sultan_invoices',
   'sultan_requests',
   'sultan_returns',
+  'sultan_daily_journal',
   'sultan_store_settings',
   'sultan_users',
   'sultan_roles',

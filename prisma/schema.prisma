@@ -58,6 +58,12 @@ model CustomerRequest {
   updatedAt DateTime @updatedAt
 }
 
+model DailyJournal {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 // إعدادات المتجر: سجل واحد (id = "store")
 model StoreSetting {
   id        String   @id
