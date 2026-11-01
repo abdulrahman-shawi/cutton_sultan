@@ -54,6 +54,8 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
   });
 
   const entryOptions = useMemo(() => buildEntryOptions(products, subcategories), [products, subcategories]);
+  // في المقبوضات (البيع) لا تُعرض تفصيلات نفد مخزونها — لا يمكن بيع قطعة غير موجودة
+  const sellableOptions = useMemo(() => entryOptions.filter((option) => option.stock > 0), [entryOptions]);
   const rateValue = Number(exchangeRate) || 0;
   const isReceipts = type === 'مقبوضات';
   const isExpense = type === 'مصاريف يومية';
@@ -123,6 +125,10 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
     const option = entryOptions.find((entry) => entry.barcode === value);
     if (!option) {
       setScanError('لا يوجد منتج مسجل بهذا الباركود');
+      return;
+    }
+    if (isReceipts && option.stock <= 0) {
+      setScanError(`نفد مخزون «${optionLabel(option)}» — لا يمكن بيعه`);
       return;
     }
     const basePrice = type === 'مدفوعات' ? option.wholesalePrice : option.retailPrice;
@@ -374,7 +380,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                   key={item.key}
                   item={item}
                   type={type}
-                  entryOptions={entryOptions}
+                  entryOptions={isReceipts ? sellableOptions : entryOptions}
                   exchangeRate={rateValue}
                   onChange={(field, value) => updateItem(item.key, field, value)}
                   onRemove={() => setItems((prev) => prev.filter((entry) => entry.key !== item.key))}
