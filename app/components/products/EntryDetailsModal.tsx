@@ -61,13 +61,17 @@ export default function EntryDetailsModal({ product, subcategories, onClose }: E
     }
     const priceSyp = isUsd ? entry.salePrice * dollarRate : entry.salePrice;
     const variantLabel = [entry.color, entry.size].filter(Boolean).join(' / ');
-    const pieceName = [product.name, variantLabel].filter(Boolean).join(' — ');
+    const fullName = [product.name, variantLabel].filter(Boolean).join(' — ');
+    // عنوان الملصق: اسم القسم الفرعي إن وُجد، واسم المنتج والتفصيلة سطراً ثانياً تحته
+    const subName = subcategories.find((subcategory) => subcategory.id === entry.subcategoryId)?.name ?? '';
+    const pieceName = subName || fullName;
+    const subtitle = subName ? fullName : undefined;
     const storeName = loadStoreName();
     const params = new URLSearchParams({ n: pieceName, p: String(Math.round(priceSyp)) });
     if (storeName) params.set('st', storeName);
     const pageUrl = `${window.location.origin}/p?${params.toString()}`;
     downloadProductLabel(
-      { barcode: entry.barcode, pieceName, priceSyp, pageUrl },
+      { barcode: entry.barcode, pieceName, subtitle, priceSyp, pageUrl },
       sanitizeFilename(`${product.name}-${entry.barcode}`)
     );
     setLabelError('');
@@ -188,7 +192,7 @@ export default function EntryDetailsModal({ product, subcategories, onClose }: E
                           <button
                             type="button"
                             onClick={() => handleDownload(entry)}
-                            title="تنزيل ملصق PNG (اسم القطعة + السعر بالسوري + QR)"
+                            title="تنزيل ملصق PNG (القسم الفرعي واسم القطعة + السعر بالسوري + QR)"
                             aria-label={`تنزيل ملصق باركود ${entry.barcode}`}
                             className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors"
                           >
@@ -207,7 +211,7 @@ export default function EntryDetailsModal({ product, subcategories, onClose }: E
             <span className="mx-2 text-slate-300">|</span>
             إجمالي الكمية: <strong className="text-slate-700">{totalQuantity}</strong> قطعة
             <span className="mx-2 text-slate-300">|</span>
-            زر التنزيل يحفظ ملصقاً كاملاً: اسم القطعة والسعر بالسوري ورمز QR للعملاء
+            زر التنزيل يحفظ ملصقاً كاملاً: اسم القسم الفرعي ثم اسم القطعة والسعر بالسوري ورمز QR للعملاء
           </div>
         </div>
 

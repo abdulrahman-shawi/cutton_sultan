@@ -42,6 +42,7 @@ function makeQrImage(dataUrl: string | null): Promise<HTMLImageElement | null> {
 export interface ProductLabelOptions {
   barcode: string;
   pieceName: string;
+  subtitle?: string; // سطر ثانٍ أصغر تحت العنوان — اسم المنتج واللون/المقاس عندما يكون العنوان اسم القسم الفرعي
   priceSyp: number;
   pageUrl: string;
 }
@@ -70,7 +71,9 @@ export async function downloadProductLabel(
 
   const qrSize = 170;
   const pad = 28;
-  const nameHeight = 44;
+  const subtitle = options.subtitle?.trim() ?? '';
+  const hasSubtitle = subtitle !== '';
+  const nameHeight = hasSubtitle ? 68 : 44;
   const priceHeight = 54;
   const width = pad + qrSize + 20 + barcodeCanvas.width + pad;
   const height = pad + nameHeight + barcodeCanvas.height + priceHeight + pad;
@@ -94,7 +97,18 @@ export async function downloadProductLabel(
     ctx.font = `bold ${fontSize}px Arial`;
   }
   ctx.fillStyle = '#0f172a';
-  ctx.fillText(options.pieceName, width / 2, pad + nameHeight / 2);
+  ctx.fillText(options.pieceName, width / 2, pad + (hasSubtitle ? 22 : nameHeight / 2));
+
+  if (hasSubtitle) {
+    let subSize = 16;
+    ctx.font = `${subSize}px Arial`;
+    while (ctx.measureText(subtitle).width > width - pad * 2 && subSize > 11) {
+      subSize -= 1;
+      ctx.font = `${subSize}px Arial`;
+    }
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(subtitle, width / 2, pad + 50);
+  }
 
   const barcodeX = width - pad - barcodeCanvas.width;
   const barcodeY = pad + nameHeight;
