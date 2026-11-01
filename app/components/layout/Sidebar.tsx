@@ -19,6 +19,7 @@ const navItems = [
   { name: 'العملاء', href: '/customers', icon: 'customers' },
   { name: 'الموردين', href: '/suppliers', icon: 'suppliers' },
   { name: 'دفتر اليومية', href: '/daily-journal', icon: 'journal' },
+  { name: 'المساعد الذكي', href: '/assistant', icon: 'assistant' },
   { name: 'المستخدمون', href: '/users', icon: 'users' },
   { name: 'الصلاحيات', href: '/permissions', icon: 'permissions' },
   { name: 'الإعدادات', href: '/settings', icon: 'settings' },
@@ -39,6 +40,7 @@ const icons = {
   permissions: <><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z" /><path d="m9 11.5 2 2 4-4" /></>,
   suppliers: <><path d="M10 17h4V5H2v12h3" /><path d="M14 9h4l4 4v4h-2M14 17h-4" /><circle cx="7.5" cy="17.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
   journal: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 4.5v15Z" /><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5" /><path d="M9 7h6M9 11h4" /></>,
+  assistant: <><path d="M12 3v3M18.4 5.6l-2.1 2.1M21 12h-3M5.6 5.6l2.1 2.1M3 12h3" /><path d="M8 21h8M12 17v4" /><path d="M17 13.5a5 5 0 1 0-10 0c0 1.5.7 2.8 1.8 3.7.4.4.7.9.8 1.5l.1.3h4.6l.1-.3c.1-.6.4-1.1.8-1.5 1.1-.9 1.8-2.2 1.8-3.7Z" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.6-1.4-2.4L7.3 15a8 8 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.6a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.6 1.4 2.4-1.4 1.1a8 8 0 0 1-.1 2Z" /></>,
 };
 

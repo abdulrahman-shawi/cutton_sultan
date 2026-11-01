@@ -13,6 +13,7 @@ export type PageKey =
   | 'customers'
   | 'suppliers'
   | 'daily_journal'
+  | 'assistant'
   | 'reports'
   | 'users'
   | 'permissions'
@@ -58,6 +59,7 @@ export const APP_PAGES: AppPage[] = [
   { key: 'customers', label: 'العملاء', path: '/customers' },
   { key: 'suppliers', label: 'الموردين', path: '/suppliers' },
   { key: 'daily_journal', label: 'دفتر اليومية', path: '/daily-journal' },
+  { key: 'assistant', label: 'المساعد الذكي', path: '/assistant' },
   { key: 'reports', label: 'التقارير المالية', path: '/reports' },
   { key: 'users', label: 'المستخدمون', path: '/users' },
   { key: 'permissions', label: 'الصلاحيات', path: '/permissions' },
@@ -139,7 +141,8 @@ function employeePermissions(): Record<PageKey, PagePermission> {
       page.key === 'returns' ||
       page.key === 'customers' ||
       page.key === 'suppliers' ||
-      page.key === 'daily_journal'
+      page.key === 'daily_journal' ||
+      page.key === 'assistant'
     ) {
       permissions[page.key] = { view: true, add: true, edit: true, delete: true };
     }
@@ -161,6 +164,10 @@ export function seedDefaultRoles(): void {
         // منح «دفتر اليومية» لدور الموظف الافتراضي إن أُضيف حديثاً
         if (role.id === EMPLOYEE_ROLE_ID && !role.permissions.daily_journal?.view) {
           permissions.daily_journal = { view: true, add: true, edit: true, delete: true };
+        }
+        // منح «المساعد الذكي» لدور الموظف الافتراضي إن أُضيف حديثاً
+        if (role.id === EMPLOYEE_ROLE_ID && !role.permissions.assistant?.view) {
+          permissions.assistant = { view: true, add: true, edit: true, delete: true };
         }
         return { ...role, permissions };
       })
