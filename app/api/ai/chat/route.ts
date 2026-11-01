@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model,
-        temperature: 0.3,
+        // بلا temperature: نماذج K3 تقبل فقط القيمة الافتراضية (1) وترفض أي قيمة مخصصة برمز 400
         messages: [{ role: 'system', content: buildSystemPrompt(digest) }, ...messages],
         tools: AI_TOOLS,
       }),
