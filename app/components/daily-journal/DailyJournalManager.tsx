@@ -7,12 +7,17 @@ import JournalList from './JournalList';
 import JournalEntryModal from './JournalEntryModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
 import { usePermissions } from '../auth/usePermissions';
+import type { Invoice } from '../invoices/types';
 import {
   computeTotals,
   DAILY_JOURNAL_STORAGE_KEY,
   formatAmount,
+  invoiceToJournalRow,
+  manualEntryToRow,
   todayDateString,
+  toLocalDateString,
   type JournalEntry,
+  type JournalRow,
 } from './types';
 
 type ModalState = { mode: 'create' } | { mode: 'edit'; entry: JournalEntry } | null;
@@ -29,6 +34,18 @@ function loadEntries(): JournalEntry[] {
   }
 }
 
+function loadInvoices(): Invoice[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem('sultan_invoices');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Invoice[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function formatDayLabel(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00`);
   return date.toLocaleDateString('ar-SY-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -36,6 +53,7 @@ function formatDayLabel(dateString: string): string {
 
 export default function DailyJournalManager() {
   const [entries, setEntries] = useState<JournalEntry[]>(loadEntries);
+  const [invoices] = useState<Invoice[]>(loadInvoices);
   const [selectedDay, setSelectedDay] = useState(todayDateString);
   const [modal, setModal] = useState<ModalState>(null);
   const [deleting, setDeleting] = useState<JournalEntry | null>(null);
@@ -56,14 +74,18 @@ export default function DailyJournalManager() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const dayEntries = useMemo(
-    () =>
-      entries
-        .filter((entry) => entry.date === selectedDay)
-        .sort((a, b) => a.createdAt - b.createdAt),
-    [entries, selectedDay]
-  );
-  const totals = useMemo(() => computeTotals(dayEntries), [dayEntries]);
+  // صفوف الدفتر لليوم المختار: القيود اليدوية + فواتير المقبوضات والمدفوعات والمصاريف اليومية المؤرخة بنفس اليوم
+  const dayRows = useMemo<JournalRow[]>(() => {
+    const manualRows = entries
+      .filter((entry) => entry.date === selectedDay)
+      .map(manualEntryToRow);
+    const invoiceRows = invoices
+      .filter((invoice) => toLocalDateString(invoice.createdAt) === selectedDay)
+      .map(invoiceToJournalRow);
+    return [...manualRows, ...invoiceRows].sort((a, b) => a.createdAt - b.createdAt);
+  }, [entries, invoices, selectedDay]);
+
+  const totals = useMemo(() => computeTotals(dayRows), [dayRows]);
 
   const handleSave = (data: Omit<JournalEntry, 'id' | 'createdAt'>) => {
     const isEdit = modal?.mode === 'edit';
@@ -81,6 +103,17 @@ export default function DailyJournalManager() {
     setEntries((prev) => prev.filter((entry) => entry.id !== deleting.id));
     setDeleting(null);
     setToast('تم حذف القيد بنجاح');
+  };
+
+  // تعديل/حذف من الجدول يخص القيود اليدوية فقط — صفوف الفواتير تُدار من صفحة الفواتير
+  const handleEditRow = (row: JournalRow) => {
+    const entry = entries.find((item) => item.id === row.id);
+    if (entry) setModal({ mode: 'edit', entry });
+  };
+
+  const handleDeleteRow = (row: JournalRow) => {
+    const entry = entries.find((item) => item.id === row.id);
+    if (entry) setDeleting(entry);
   };
 
   const netSyp = totals.receiptsSyp - totals.paymentsSyp;
@@ -133,7 +166,7 @@ export default function DailyJournalManager() {
           <p className="text-xs font-semibold text-blue-600 mb-1.5">السجلات المالية اليومية</p>
           <h1 className="text-2xl font-bold text-slate-900">دفتر اليومية</h1>
           <p className="text-sm text-slate-500 mt-1.5">
-            سجّل مقبوضاتك ومدفوعاتك اليومية مع العدد والكمية لكل قيد.
+            سجّل مقبوضاتك ومدفوعاتك مع العدد والكمية — وتُقيد فواتير المقبوضات والمدفوعات والمصاريف اليومية تلقائياً.
           </p>
         </div>
         {perms.add && (
@@ -189,13 +222,13 @@ export default function DailyJournalManager() {
       </div>
 
       <JournalList
-        entries={dayEntries}
+        rows={dayRows}
         canAdd={perms.add}
         canEdit={perms.edit}
         canDelete={perms.delete}
         onAdd={() => setModal({ mode: 'create' })}
-        onEdit={(entry) => setModal({ mode: 'edit', entry })}
-        onDelete={setDeleting}
+        onEdit={handleEditRow}
+        onDelete={handleDeleteRow}
       />
 
       {modal && (

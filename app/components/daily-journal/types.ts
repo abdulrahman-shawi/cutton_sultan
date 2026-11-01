@@ -1,4 +1,6 @@
 // components/daily-journal/types.ts
+import type { Invoice } from '../invoices/types';
+
 export type JournalEntryType = 'مقبوضات' | 'مدفوعات';
 export type JournalCurrency = 'SYP' | 'USD';
 
@@ -32,10 +34,14 @@ export function currencySymbol(currency: JournalCurrency): string {
 }
 
 export function todayDateString(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  return toLocalDateString(Date.now());
+}
+
+export function toLocalDateString(timestamp: number): string {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -53,18 +59,66 @@ export function emptyDayTotals(): DayTotals {
   return { receiptsSyp: 0, receiptsUsd: 0, paymentsSyp: 0, paymentsUsd: 0, count: 0, quantity: 0 };
 }
 
-export function computeTotals(entries: JournalEntry[]): DayTotals {
+// صف موحّد في دفتر اليومية: قيد يدوي أو قيد مشتق تلقائياً من فاتورة — يتيح عرض النوعين معاً بجدول واحد
+export interface JournalRow {
+  id: string;
+  source: 'manual' | 'invoice';
+  description: string;
+  type: JournalEntryType;
+  syp: number;
+  usd: number;
+  count: number; // العدد
+  quantity: number; // الكمية
+  notes: string;
+  createdAt: number;
+}
+
+export function manualEntryToRow(entry: JournalEntry): JournalRow {
+  return {
+    id: entry.id,
+    source: 'manual',
+    description: entry.description,
+    type: entry.type,
+    syp: entry.currency === 'SYP' ? entry.amount : 0,
+    usd: entry.currency === 'USD' ? entry.amount : 0,
+    count: entry.count,
+    quantity: entry.quantity,
+    notes: entry.notes,
+    createdAt: entry.createdAt,
+  };
+}
+
+// فواتير المقبوضات تُقيد في خانة المقبوضات، ومدفوعات الموردين والمصاريف اليومية في خانة المدفوعات
+export function invoiceToJournalRow(invoice: Invoice): JournalRow {
+  const partySuffix = invoice.partyName ? ` — ${invoice.partyName}` : '';
+  const statusNote = invoice.status !== 'مدفوعة' ? `الحالة: ${invoice.status}` : '';
+  const notes = [invoice.notes, statusNote].filter(Boolean).join(' — ');
+  return {
+    id: `invoice-${invoice.id}`,
+    source: 'invoice',
+    description: `فاتورة ${invoice.type} رقم ${invoice.number}${partySuffix}`,
+    type: invoice.type === 'مقبوضات' ? 'مقبوضات' : 'مدفوعات',
+    syp: invoice.totalSyp,
+    usd: invoice.totalUsd,
+    count: invoice.items.length,
+    quantity: invoice.items.reduce((sum, item) => sum + item.quantity, 0),
+    notes,
+    createdAt: invoice.createdAt,
+  };
+}
+
+export function computeTotals(rows: JournalRow[]): DayTotals {
   const totals = emptyDayTotals();
-  for (const entry of entries) {
-    if (entry.type === 'مقبوضات') {
-      if (entry.currency === 'USD') totals.receiptsUsd += entry.amount;
-      else totals.receiptsSyp += entry.amount;
+  for (const row of rows) {
+    if (row.type === 'مقبوضات') {
+      totals.receiptsSyp += row.syp;
+      totals.receiptsUsd += row.usd;
     } else {
-      if (entry.currency === 'USD') totals.paymentsUsd += entry.amount;
-      else totals.paymentsSyp += entry.amount;
+      totals.paymentsSyp += row.syp;
+      totals.paymentsUsd += row.usd;
     }
-    totals.count += entry.count;
-    totals.quantity += entry.quantity;
+    totals.count += row.count;
+    totals.quantity += row.quantity;
   }
   return totals;
 }
