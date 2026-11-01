@@ -73,7 +73,8 @@ export default function AssistantManager() {
     });
     const data = (await response.json().catch(() => null)) as { message?: ChatMessage; error?: string; detail?: string } | null;
     if (!response.ok || !data?.message) {
-      setError(data?.error ?? 'تعذر الوصول إلى المساعد الذكي — حاول مجدداً');
+      const serverError = data?.error ?? 'تعذر الوصول إلى المساعد الذكي — حاول مجدداً';
+      setError(data?.detail ? `${serverError} — ${data.detail}` : serverError);
       return null;
     }
     return data.message;
