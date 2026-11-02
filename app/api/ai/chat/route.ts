@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { messages?: unknown; digest?: unknown };
+  let body: { messages?: unknown; digest?: unknown; system?: unknown; tools?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -46,6 +46,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'لا توجد رسائل صالحة في الطلب' }, { status: 400 });
   }
   const digest = typeof body.digest === 'string' ? body.digest.slice(0, 20000) : '';
+  // موجه نظام مخصص (محادثات العملاء/اختبار الوكيل) — عند غيابه يُستخدم موجه المساعد القياسي
+  const customSystem = typeof body.system === 'string' ? body.system.trim().slice(0, 20000) : '';
+  const withTools = body.tools !== false;
 
   const baseUrl = (process.env.KIMI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
   const model = process.env.KIMI_MODEL || DEFAULT_MODEL;
@@ -58,8 +61,8 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         model,
         // بلا temperature: نماذج K3 تقبل فقط القيمة الافتراضية (1) وترفض أي قيمة مخصصة برمز 400
-        messages: [{ role: 'system', content: buildSystemPrompt(digest) }, ...messages],
-        tools: AI_TOOLS,
+        messages: [{ role: 'system', content: customSystem || buildSystemPrompt(digest) }, ...messages],
+        ...(withTools ? { tools: AI_TOOLS } : {}),
       }),
     });
   } catch {
