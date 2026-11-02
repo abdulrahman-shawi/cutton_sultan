@@ -21,7 +21,7 @@ import {
 } from './types';
 import DateRangeFilter, { inDateRange } from '../common/DateRangeFilter';
 
-type ModalState = { mode: 'create' } | null;
+type ModalState = { mode: 'create' } | { mode: 'edit'; invoice: Invoice } | null;
 type Filter = 'الكل' | InvoiceType;
 
 function loadCustomers(): Customer[] {
@@ -171,6 +171,15 @@ export default function InvoicesManager() {
     setToast('تم حفظ الفاتورة بنجاح');
   };
 
+  // تعديل فاتورة قائمة: البنود ثابتة فلا يتغير المخزون — يُحدَّث المدفوع والمتبقي والحالة فقط
+  const handleUpdate = (data: Omit<Invoice, 'id' | 'number' | 'createdAt'>) => {
+    if (modal?.mode !== 'edit') return;
+    const id = modal.invoice.id;
+    setInvoices((prev) => prev.map((invoice) => (invoice.id === id ? { ...invoice, ...data } : invoice)));
+    setModal(null);
+    setToast('تم تحديث الفاتورة بنجاح');
+  };
+
   const handleDelete = () => {
     if (!deleting) return;
     setInvoices((prev) => prev.filter((invoice) => invoice.id !== deleting.id));
@@ -244,9 +253,11 @@ export default function InvoicesManager() {
       <InvoiceList
         invoices={filtered}
         canAdd={perms.add}
+        canEdit={perms.edit}
         canDelete={perms.delete}
         onAdd={() => setModal({ mode: 'create' })}
         onView={setViewing}
+        onEdit={(invoice) => setModal({ mode: 'edit', invoice })}
         onDelete={setDeleting}
       />
 
@@ -256,8 +267,9 @@ export default function InvoicesManager() {
           suppliers={suppliers}
           products={products}
           subcategories={subcategories}
+          initial={modal.mode === 'edit' ? modal.invoice : undefined}
           onClose={() => setModal(null)}
-          onSave={handleSave}
+          onSave={modal.mode === 'edit' ? handleUpdate : handleSave}
         />
       )}
 

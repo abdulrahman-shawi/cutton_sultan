@@ -1,5 +1,5 @@
 // components/daily-journal/types.ts
-import type { Invoice } from '../invoices/types';
+import type { Invoice, PaymentStatus } from '../invoices/types';
 
 export type JournalEntryType = 'مقبوضات' | 'مدفوعات';
 export type JournalCurrency = 'SYP' | 'USD';
@@ -51,12 +51,14 @@ export interface DayTotals {
   receiptsUsd: number;
   paymentsSyp: number;
   paymentsUsd: number;
+  remainingSyp: number; // متبقي فواتير اليوم غير المسددة
+  remainingUsd: number;
   count: number;
   quantity: number;
 }
 
 export function emptyDayTotals(): DayTotals {
-  return { receiptsSyp: 0, receiptsUsd: 0, paymentsSyp: 0, paymentsUsd: 0, count: 0, quantity: 0 };
+  return { receiptsSyp: 0, receiptsUsd: 0, paymentsSyp: 0, paymentsUsd: 0, remainingSyp: 0, remainingUsd: 0, count: 0, quantity: 0 };
 }
 
 // صف موحّد في دفتر اليومية: قيد يدوي أو قيد مشتق تلقائياً من فاتورة — يتيح عرض النوعين معاً بجدول واحد
@@ -69,6 +71,9 @@ export interface JournalRow {
   usd: number;
   count: number; // العدد
   quantity: number; // الكمية
+  status: PaymentStatus | null; // حالة دفع الفاتورة (القيود اليدوية مسددة بطبيعتها)
+  remainingSyp: number; // المتبقي على الفاتورة
+  remainingUsd: number;
   notes: string;
   createdAt: number;
 }
@@ -83,6 +88,9 @@ export function manualEntryToRow(entry: JournalEntry): JournalRow {
     usd: entry.currency === 'USD' ? entry.amount : 0,
     count: entry.count,
     quantity: entry.quantity,
+    status: null,
+    remainingSyp: 0,
+    remainingUsd: 0,
     notes: entry.notes,
     createdAt: entry.createdAt,
   };
@@ -91,8 +99,6 @@ export function manualEntryToRow(entry: JournalEntry): JournalRow {
 // فواتير المقبوضات تُقيد في خانة المقبوضات، ومدفوعات الموردين والمصاريف اليومية في خانة المدفوعات
 export function invoiceToJournalRow(invoice: Invoice): JournalRow {
   const partySuffix = invoice.partyName ? ` — ${invoice.partyName}` : '';
-  const statusNote = invoice.status !== 'مدفوعة' ? `الحالة: ${invoice.status}` : '';
-  const notes = [invoice.notes, statusNote].filter(Boolean).join(' — ');
   return {
     id: `invoice-${invoice.id}`,
     source: 'invoice',
@@ -102,7 +108,10 @@ export function invoiceToJournalRow(invoice: Invoice): JournalRow {
     usd: invoice.totalUsd,
     count: invoice.items.length,
     quantity: invoice.items.reduce((sum, item) => sum + item.quantity, 0),
-    notes,
+    status: invoice.status,
+    remainingSyp: invoice.remainingSyp,
+    remainingUsd: invoice.remainingUsd,
+    notes: invoice.notes,
     createdAt: invoice.createdAt,
   };
 }
@@ -117,6 +126,8 @@ export function computeTotals(rows: JournalRow[]): DayTotals {
       totals.paymentsSyp += row.syp;
       totals.paymentsUsd += row.usd;
     }
+    totals.remainingSyp += row.remainingSyp;
+    totals.remainingUsd += row.remainingUsd;
     totals.count += row.count;
     totals.quantity += row.quantity;
   }

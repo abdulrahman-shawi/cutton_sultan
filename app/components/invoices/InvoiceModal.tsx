@@ -1,4 +1,4 @@
-// components/invoices/InvoiceModal.tsx — إصدار فاتورة (مقبوضات / مدفوعات / مصاريف يومية)
+// components/invoices/InvoiceModal.tsx — إصدار فاتورة (مقبوضات / مدفوعات / مصاريف يومية) أو تعديل مدفوعاتها
 import { useMemo, useState, type FormEvent } from 'react';
 import { AlertCircle, ScanLine, X } from 'lucide-react';
 import CameraScanner from '../../p/CameraScanner';
@@ -30,6 +30,7 @@ interface InvoiceModalProps {
   suppliers: Supplier[];
   products: Product[];
   subcategories: Subcategory[];
+  initial?: Invoice; // عند تمريرها يعمل المودال بوضع التعديل: تحديث المدفوعات فقط والبنود ثابتة
   onClose: () => void;
   onSave: (data: Omit<Invoice, 'id' | 'number' | 'createdAt'>) => void;
 }
@@ -37,14 +38,36 @@ interface InvoiceModalProps {
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
-export default function InvoiceModal({ customers, suppliers, products, subcategories, onClose, onSave }: InvoiceModalProps) {
-  const [type, setType] = useState<InvoiceType>('مقبوضات');
-  const [partyId, setPartyId] = useState('');
-  const [status, setStatus] = useState<PaymentStatus>('مدفوعة');
-  const [items, setItems] = useState<ItemDraft[]>([createItemDraft()]);
-  const [paidSyp, setPaidSyp] = useState('');
-  const [paidUsd, setPaidUsd] = useState('');
-  const [notes, setNotes] = useState('');
+const statusBadgeStyles: Record<PaymentStatus, string> = {
+  'مدفوعة': 'bg-emerald-50 text-emerald-600',
+  'مدفوعة جزئياً': 'bg-amber-50 text-amber-600',
+  'غير مدفوعة': 'bg-rose-50 text-rose-500',
+};
+
+function toItemDrafts(items: InvoiceItem[]): ItemDraft[] {
+  return items.map((item) => ({
+    key: item.key,
+    productId: item.productId,
+    entryBarcode: item.entryBarcode,
+    name: item.name,
+    query: item.name,
+    currency: item.currency,
+    quantity: String(item.quantity),
+    price: String(item.price),
+    discount: item.discount > 0 ? String(item.discount) : '',
+    notes: item.notes,
+  }));
+}
+
+export default function InvoiceModal({ customers, suppliers, products, subcategories, initial, onClose, onSave }: InvoiceModalProps) {
+  const isEdit = Boolean(initial);
+  const [type, setType] = useState<InvoiceType>(initial?.type ?? 'مقبوضات');
+  const [partyId, setPartyId] = useState(initial?.partyId ?? '');
+  const [status, setStatus] = useState<PaymentStatus>(initial?.status ?? 'مدفوعة');
+  const [items, setItems] = useState<ItemDraft[]>(() => (initial ? toItemDrafts(initial.items) : [createItemDraft()]));
+  const [paidSyp, setPaidSyp] = useState(initial ? String(initial.paidSyp) : '');
+  const [paidUsd, setPaidUsd] = useState(initial ? String(initial.paidUsd) : '');
+  const [notes, setNotes] = useState(initial?.notes ?? '');
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
@@ -74,6 +97,27 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
 
   const remainingSyp = status === 'مدفوعة' ? 0 : Math.max(totals.SYP - (Number(paidSyp) || 0), 0);
   const remainingUsd = status === 'مدفوعة' ? 0 : Math.max(totals.USD - (Number(paidUsd) || 0), 0);
+
+  // وضع التعديل: الحالة تُشتق دائماً من المدفوع — المتبقي = الإجمالي − المدفوع
+  const editPaidSypRaw = totals.SYP === 0 || paidSyp.trim() === '' ? 0 : Number(paidSyp);
+  const editPaidUsdRaw = totals.USD === 0 || paidUsd.trim() === '' ? 0 : Number(paidUsd);
+  const editPaidSyp = Number.isNaN(editPaidSypRaw) ? 0 : editPaidSypRaw;
+  const editPaidUsd = Number.isNaN(editPaidUsdRaw) ? 0 : editPaidUsdRaw;
+  const editRemainingSyp = Math.max(totals.SYP - editPaidSyp, 0);
+  const editRemainingUsd = Math.max(totals.USD - editPaidUsd, 0);
+  const derivedStatus: PaymentStatus =
+    editRemainingSyp <= 0 && editRemainingUsd <= 0
+      ? 'مدفوعة'
+      : editPaidSyp + editPaidUsd > 0
+        ? 'مدفوعة جزئياً'
+        : 'غير مدفوعة';
+
+  const shownStatus = isEdit ? derivedStatus : status;
+  const shownRemainingSyp = isEdit ? editRemainingSyp : remainingSyp;
+  const shownRemainingUsd = isEdit ? editRemainingUsd : remainingUsd;
+  const showPaidInputs = isEdit
+    ? presentCurrencies.length > 0
+    : status === 'مدفوعة جزئياً' && presentCurrencies.length > 0;
 
   const updateItem = (key: string, field: keyof ItemDraft, value: string) => {
     setItems((prev) => prev.map((item) => (item.key === key ? { ...item, [field]: value } : item)));
@@ -161,6 +205,30 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    // وضع التعديل: البنود والطرف ثابتان — يُحدَّث المدفوع فقط وتُحسب الحالة والمتبقي منه
+    if (isEdit && initial) {
+      if (Number.isNaN(editPaidSypRaw) || editPaidSypRaw < 0) return setError('أدخل مبلغاً مدفوعاً صحيحاً بالليرة السورية');
+      if (Number.isNaN(editPaidUsdRaw) || editPaidUsdRaw < 0) return setError('أدخل مبلغاً مدفوعاً صحيحاً بالدولار');
+      if (editPaidSypRaw > totals.SYP) return setError('المبلغ المدفوع بالسوري أكبر من إجمالي الفاتورة');
+      if (editPaidUsdRaw > totals.USD) return setError('المبلغ المدفوع بالدولار أكبر من إجمالي الفاتورة');
+      onSave({
+        type,
+        partyId: initial.partyId,
+        partyName: initial.partyName,
+        status: derivedStatus,
+        items: initial.items,
+        totalSyp: totals.SYP,
+        totalUsd: totals.USD,
+        paidSyp: editPaidSypRaw,
+        paidUsd: editPaidUsdRaw,
+        remainingSyp: editRemainingSyp,
+        remainingUsd: editRemainingUsd,
+        notes: notes.trim(),
+      });
+      return;
+    }
+
     if (!isExpense && !partyId) return setError(`يرجى اختيار ${partyLabel}`);
     if (items.length === 0) return setError('أضف بنداً واحداً على الأقل');
 
@@ -234,6 +302,8 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
     ? 'grid-cols-[minmax(0,1fr)_130px_90px_40px]'
     : 'grid-cols-[minmax(0,1.5fr)_64px_100px_84px_minmax(0,1fr)_110px_40px]';
 
+  const readGrid = 'grid-cols-[minmax(0,1.6fr)_64px_110px_90px_110px]';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={onClose} />
@@ -243,7 +313,9 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
         className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6"
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-slate-900">إصدار فاتورة {type}</h2>
+          <h2 className="text-lg font-bold text-slate-900">
+            {isEdit && initial ? `تعديل فاتورة ${type} رقم #${initial.number}` : `إصدار فاتورة ${type}`}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -255,18 +327,20 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
-            {INVOICE_TYPES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => switchType(option)}
-                className={segmentedClass(type === option)}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
+          {!isEdit && (
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+              {INVOICE_TYPES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => switchType(option)}
+                  className={segmentedClass(type === option)}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {!isExpense && (
@@ -277,11 +351,12 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 <select
                   id="invoice-party"
                   value={partyId}
+                  disabled={isEdit}
                   onChange={(event) => {
                     setPartyId(event.target.value);
                     setError('');
                   }}
-                  className={`${inputClass} bg-white cursor-pointer`}
+                  className={`${inputClass} bg-white ${isEdit ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   <option value="" disabled>
                     اختر من القائمة...
@@ -294,7 +369,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 </select>
               </div>
             )}
-            {isReceipts && (
+            {isReceipts && !isEdit && (
               <div>
                 <label htmlFor="invoice-rate" className="block text-sm font-medium text-slate-700 mb-1.5">
                   سعر الصرف <span className="text-xs font-normal text-slate-400">(ل.س للدولار الواحد)</span>
@@ -316,85 +391,137 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 )}
               </div>
             )}
-            <div>
-              <label htmlFor="invoice-status" className="block text-sm font-medium text-slate-700 mb-1.5">
-                حالة الدفع
-              </label>
-              <select
-                id="invoice-status"
-                value={status}
-                onChange={(event) => setStatus(event.target.value as PaymentStatus)}
-                className={`${inputClass} bg-white cursor-pointer`}
-              >
-                {PAYMENT_STATUSES.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <span className="text-sm font-medium text-slate-700">
-                البنود <span className="text-red-500">*</span>
-                {!isExpense && (
-                  <span className="text-xs font-normal text-slate-400">
-                    {' '}
-                    (السعر تلقائي: {type === 'مدفوعات' ? 'جملة' : 'مفرق'})
-                    {type === 'مقبوضات' && ' · الدفع بالليرة السورية'}
-                  </span>
-                )}
-              </span>
-              {!isExpense && (
-                <button
-                  type="button"
-                  onClick={() => setScanning((prev) => !prev)}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+            {isEdit ? (
+              <div>
+                <span className="block text-sm font-medium text-slate-700 mb-1.5">
+                  حالة الدفع <span className="text-xs font-normal text-slate-400">(تُحدَّد تلقائياً حسب المدفوع)</span>
+                </span>
+                <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ${statusBadgeStyles[shownStatus]}`}>
+                  {shownStatus}
+                </span>
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="invoice-status" className="block text-sm font-medium text-slate-700 mb-1.5">
+                  حالة الدفع
+                </label>
+                <select
+                  id="invoice-status"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value as PaymentStatus)}
+                  className={`${inputClass} bg-white cursor-pointer`}
                 >
-                  <ScanLine className="w-4 h-4" aria-hidden="true" />
-                  {scanning ? 'إخفاء الماسح' : 'مسح باركود'}
-                </button>
-              )}
-            </div>
-            {scanning && !isExpense && (
-              <div className="mb-3">
-                <CameraScanner onDetected={handleScan} />
-                {scanError && <p className="text-xs text-amber-600 mt-2">{scanError}</p>}
+                  {PAYMENT_STATUSES.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
-
-            <div className={`hidden md:grid ${headerGrid} gap-3 px-1 mb-2 text-[11px] font-semibold text-slate-400`}>
-              <span>{isExpense ? 'بيان المادة' : 'المنتج'}</span>
-              {!isExpense && <span className="text-center">الكمية</span>}
-              <span className="text-center">السعر</span>
-              {!isExpense && <span className="text-center text-rose-400">الخصم</span>}
-              {!isExpense && <span>ملاحظات المنتج</span>}
-              <span className="text-center">الإجمالي</span>
-              <span />
-            </div>
-            <ul className="space-y-3">
-              {items.map((item) => (
-                <InvoiceItemRow
-                  key={item.key}
-                  item={item}
-                  type={type}
-                  entryOptions={isReceipts ? sellableOptions : entryOptions}
-                  exchangeRate={rateValue}
-                  onChange={(field, value) => updateItem(item.key, field, value)}
-                  onRemove={() => setItems((prev) => prev.filter((entry) => entry.key !== item.key))}
-                />
-              ))}
-            </ul>
-            <button
-              type="button"
-              onClick={() => setItems((prev) => [...prev, createItemDraft()])}
-              className="w-full mt-3 py-2.5 rounded-xl border-2 border-dashed border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors"
-            >
-              + إضافة بند جديد
-            </button>
           </div>
+
+          {isEdit && initial ? (
+            <div>
+              <span className="block text-sm font-medium text-slate-700 mb-2">البنود</span>
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[560px]">
+                    <div className={`grid ${readGrid} items-center gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[11px] font-semibold text-slate-400`}>
+                      <span>البند</span>
+                      <span className="text-center">الكمية</span>
+                      <span className="text-center">السعر</span>
+                      <span className="text-center text-rose-400">الخصم</span>
+                      <span className="text-center">الإجمالي</span>
+                    </div>
+                    <ul className="divide-y divide-slate-100">
+                      {initial.items.map((item) => (
+                        <li key={item.key} className={`grid ${readGrid} items-center gap-3 px-4 py-2.5`}>
+                          <p className="text-sm font-medium text-slate-700 truncate">{item.name}</p>
+                          <span className="text-sm text-slate-600 text-center">{item.quantity}</span>
+                          <span className="text-sm text-slate-600 text-center">
+                            {formatPrice(item.price)}{' '}
+                            <span className="text-[10px]">{currencySymbol(item.currency)}</span>
+                          </span>
+                          <span className="text-sm text-slate-600 text-center">
+                            {item.discount > 0 ? formatPrice(item.discount) : '—'}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-800 text-center">
+                            {formatPrice(Math.max(item.quantity * item.price - item.discount, 0))}{' '}
+                            <span className="text-[10px]">{currencySymbol(item.currency)}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 px-4 py-2 bg-slate-50/60 border-t border-slate-100">
+                  البنود والطرف ثابتان عند التعديل — حدّث المبالغ المدفوعة فقط، لأن الكميات مرتبطة بحركة المخزون.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <span className="text-sm font-medium text-slate-700">
+                  البنود <span className="text-red-500">*</span>
+                  {!isExpense && (
+                    <span className="text-xs font-normal text-slate-400">
+                      {' '}
+                      (السعر تلقائي: {type === 'مدفوعات' ? 'جملة' : 'مفرق'})
+                      {type === 'مقبوضات' && ' · الدفع بالليرة السورية'}
+                    </span>
+                  )}
+                </span>
+                {!isExpense && (
+                  <button
+                    type="button"
+                    onClick={() => setScanning((prev) => !prev)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    <ScanLine className="w-4 h-4" aria-hidden="true" />
+                    {scanning ? 'إخفاء الماسح' : 'مسح باركود'}
+                  </button>
+                )}
+              </div>
+              {scanning && !isExpense && (
+                <div className="mb-3">
+                  <CameraScanner onDetected={handleScan} />
+                  {scanError && <p className="text-xs text-amber-600 mt-2">{scanError}</p>}
+                </div>
+              )}
+
+              <div className={`hidden md:grid ${headerGrid} gap-3 px-1 mb-2 text-[11px] font-semibold text-slate-400`}>
+                <span>{isExpense ? 'بيان المادة' : 'المنتج'}</span>
+                {!isExpense && <span className="text-center">الكمية</span>}
+                <span className="text-center">السعر</span>
+                {!isExpense && <span className="text-center text-rose-400">الخصم</span>}
+                {!isExpense && <span>ملاحظات المنتج</span>}
+                <span className="text-center">الإجمالي</span>
+                <span />
+              </div>
+              <ul className="space-y-3">
+                {items.map((item) => (
+                  <InvoiceItemRow
+                    key={item.key}
+                    item={item}
+                    type={type}
+                    entryOptions={isReceipts ? sellableOptions : entryOptions}
+                    exchangeRate={rateValue}
+                    onChange={(field, value) => updateItem(item.key, field, value)}
+                    onRemove={() => setItems((prev) => prev.filter((entry) => entry.key !== item.key))}
+                  />
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => setItems((prev) => [...prev, createItemDraft()])}
+                className="w-full mt-3 py-2.5 rounded-xl border-2 border-dashed border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors"
+              >
+                + إضافة بند جديد
+              </button>
+            </div>
+          )}
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
@@ -404,7 +531,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
               {totals.SYP === 0 && totals.USD === 0 && <span className="text-slate-400">0</span>}
             </div>
 
-            {rateValue > 0 && (totals.SYP > 0 || totals.USD > 0) && (
+            {!isEdit && rateValue > 0 && (totals.SYP > 0 || totals.USD > 0) && (
               <p className="text-xs text-slate-500">
                 <span className="text-slate-400">المعادل بسعر الصرف {formatPrice(rateValue)}: </span>
                 {totals.SYP > 0 && (
@@ -421,12 +548,12 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
               </p>
             )}
 
-            {status === 'مدفوعة جزئياً' && presentCurrencies.length > 0 && (
+            {showPaidInputs && (
               <div className="grid sm:grid-cols-2 gap-3">
                 {presentCurrencies.includes('SYP') && (
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">
-                      تم دفع (ل.س) من أصل {formatPrice(totals.SYP)}
+                      {isEdit ? `المدفوع حتى الآن (ل.س) من أصل ${formatPrice(totals.SYP)}` : `تم دفع (ل.س) من أصل ${formatPrice(totals.SYP)}`}
                     </label>
                     <input
                       type="number"
@@ -443,7 +570,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 {presentCurrencies.includes('USD') && (
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">
-                      تم دفع ($) من أصل {formatPrice(totals.USD)}
+                      {isEdit ? `المدفوع حتى الآن ($) من أصل ${formatPrice(totals.USD)}` : `تم دفع ($) من أصل ${formatPrice(totals.USD)}`}
                     </label>
                     <input
                       type="number"
@@ -460,18 +587,18 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
               </div>
             )}
 
-            {status !== 'مدفوعة' && (remainingSyp > 0 || remainingUsd > 0) && (
+            {shownStatus !== 'مدفوعة' && (shownRemainingSyp > 0 || shownRemainingUsd > 0) && (
               <p className="text-sm">
-                <span className="text-slate-500">المتبقي (يُحفظ للمراجعة): </span>
-                {remainingSyp > 0 && (
-                  <strong className="text-amber-600">{formatMoney(remainingSyp, 'SYP')} </strong>
+                <span className="text-slate-500">المتبقي: </span>
+                {shownRemainingSyp > 0 && (
+                  <strong className="text-amber-600">{formatMoney(shownRemainingSyp, 'SYP')} </strong>
                 )}
-                {remainingUsd > 0 && (
-                  <strong className="text-amber-600">{formatMoney(remainingUsd, 'USD')}</strong>
+                {shownRemainingUsd > 0 && (
+                  <strong className="text-amber-600">{formatMoney(shownRemainingUsd, 'USD')}</strong>
                 )}
               </p>
             )}
-            {status === 'غير مدفوعة' && totals.SYP === 0 && totals.USD === 0 && (
+            {shownStatus === 'غير مدفوعة' && totals.SYP === 0 && totals.USD === 0 && (
               <p className="text-xs text-slate-400">المتبقي = الإجمالي عند الحفظ</p>
             )}
           </div>
@@ -502,7 +629,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
               type="submit"
               className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
             >
-              حفظ الفاتورة
+              {isEdit ? 'حفظ التعديلات' : 'حفظ الفاتورة'}
             </button>
             <button
               type="button"

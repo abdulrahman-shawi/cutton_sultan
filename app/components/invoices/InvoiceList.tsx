@@ -1,13 +1,15 @@
 // components/invoices/InvoiceList.tsx — جدول الفواتير
-import { Eye, FileText, Plus, Trash2 } from 'lucide-react';
+import { Eye, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import { formatMoney, type Invoice, type InvoiceType } from './types';
 
 interface InvoiceListProps {
   invoices: Invoice[];
   canAdd?: boolean;
+  canEdit?: boolean;
   canDelete?: boolean;
   onAdd: () => void;
   onView: (invoice: Invoice) => void;
+  onEdit: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
 }
 
@@ -31,9 +33,11 @@ const statusStyles: Record<Invoice['status'], string> = {
 export default function InvoiceList({
   invoices,
   canAdd = true,
+  canEdit = true,
   canDelete = true,
   onAdd,
   onView,
+  onEdit,
   onDelete,
 }: InvoiceListProps) {
   if (invoices.length === 0) {
@@ -111,6 +115,16 @@ export default function InvoiceList({
                   >
                     <Eye className="w-4 h-4" aria-hidden="true" />
                   </button>
+                  {canEdit && invoice.status !== 'مدفوعة' && (
+                    <button
+                      type="button"
+                      onClick={() => onEdit(invoice)}
+                      aria-label={`تعديل فاتورة رقم ${invoice.number}`}
+                      className="p-2 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  )}
                   {canDelete && (
                     <button
                       type="button"

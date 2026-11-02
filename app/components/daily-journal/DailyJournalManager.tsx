@@ -181,7 +181,8 @@ export default function DailyJournalManager() {
           <p className="text-xs font-semibold text-blue-600 mb-1.5">السجلات المالية اليومية</p>
           <h1 className="text-2xl font-bold text-slate-900">دفتر اليومية</h1>
           <p className="text-sm text-slate-500 mt-1.5">
-            سجّل مقبوضاتك ومدفوعاتك مع العدد والكمية — وتُقيد فواتير المقبوضات والمدفوعات والمصاريف اليومية تلقائياً.
+            دفتر مقسّم إلى مقبوضات ومدفوعات مع حالة الدفع (مدفوعة / جزئياً / غير مدفوعة) والمتبقي والكمية
+            المشتراة — وتُقيد فواتير المقبوضات والمدفوعات والمصاريف اليومية تلقائياً.
           </p>
         </div>
         {perms.add && (
