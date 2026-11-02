@@ -17,7 +17,7 @@ import {
   type Workflow,
 } from '../workflows/types';
 import { callAiChat } from '../../lib/aiClient';
-import { buildAgentSystemPromptLocal, loadAgentConfig } from '../../lib/agentClient';
+import { buildAgentSystemPromptLocal, loadAgents, loadDefaultAgent } from '../../lib/agentClient';
 import { syncFromServer } from '../../lib/data';
 import { ExternalLink } from 'lucide-react';
 import type { ChatMessage } from '../../lib/ai';
@@ -73,7 +73,7 @@ function toChatMessages(conversation: Conversation): ChatMessage[] {
 export default function InboxManager() {
   const [conversations, setConversations] = useState<Conversation[]>(loadConversations);
   const [customers] = useState<Customer[]>(loadCustomers);
-  const [agent] = useState<AgentConfig>(loadAgentConfig);
+  const [agent] = useState<AgentConfig>(() => loadDefaultAgent(loadAgents()));
   const [workflows, setWorkflows] = useState<Workflow[]>(loadWorkflows);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

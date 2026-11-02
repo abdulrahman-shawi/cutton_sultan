@@ -78,6 +78,13 @@ model Workflow {
   updatedAt DateTime @updatedAt
 }
 
+// وكلاء الذكاء الاصطناعي: عدة وكلاء، أحدهم افتراضي يخدم صفحة العملاء العامة
+model Agent {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 // إعدادات المتجر: سجل واحد (id = "store")
 model StoreSetting {
   id        String   @id

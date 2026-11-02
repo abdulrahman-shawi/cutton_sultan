@@ -1,15 +1,17 @@
-// app/api/chat/route.ts — بوابة العملاء العامة: استقبال رسائل العميل، توليد رد الوكيل عبر Kimi،
-// تخزين المحادثة على الخادم لتظهر في «محادثات العملاء» لدى المالك، وتطبيق سير العمل المفعّلة.
-// بلا جلسة دخول — محمية بمحدد معدل بسيط وبدون أدوات تنفيذية.
+// app/api/chat/route.ts — بوابة العملاء العامة: استقبال رسائل العميل، توليد رد الوكيل الافتراضي عبر Kimi،
+// تنفيذ مهارة الطلبات (تسجيل العميل + إنشاء فاتورة مقبوضات مع تحديث المخزون) عند تفعيلها على الوكيل،
+// تخزين المحادثة على الخادم لتظهر في «محادثات العملاء»، وتطبيق سير العمل المفعّلة.
+// بلا جلسة دخول — محمية بمحدد معدل بسيط، والأدوات تنفيذية محدودة بالمهارات المفعّلة.
 import { NextResponse } from 'next/server';
 import { prisma, withDbRetry } from '../../lib/server/store';
 import { readCollection, readSingleton, upsertRecord } from '../../lib/server/entities';
 import { buildAgentSystemPrompt, buildCatalogDigestFromProducts, buildCustomerContextFromData } from '../../lib/agentPrompt';
 import { executeWorkflowActions, workflowMatchesMessage, type Workflow } from '../../components/workflows/types';
-import { DEFAULT_AGENT, type AgentConfig } from '../../components/agents/types';
+import { createAgent, type AgentConfig } from '../../components/agents/types';
 import type { Product } from '../../components/products/types';
 import type { Customer } from '../../components/customers/types';
-import type { Invoice } from '../../components/invoices/types';
+import type { Invoice, InvoiceItem } from '../../components/invoices/types';
+import type { ChatMessage } from '../../lib/ai';
 import type { Conversation, ConversationMessage } from '../../components/inbox/types';
 
 export const dynamic = 'force-dynamic';
@@ -39,13 +41,19 @@ function clientIp(request: Request): string {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
 }
 
-interface AgentSettings {
-  agentConfig?: Partial<AgentConfig>;
-}
-
-async function loadAgentConfig(): Promise<AgentConfig> {
-  const settings = (await readSingleton('sultan_store_settings')) as AgentSettings | null;
-  return { ...DEFAULT_AGENT, ...(settings?.agentConfig ?? {}) };
+// الوكيل الافتراضي الذي يخدم صفحة العملاء — من قائمة الوكلاء المزامنة، مع ترحيل الإعداد القديم المفرد
+async function loadDefaultAgent(): Promise<AgentConfig> {
+  const agents = ((await readCollection('sultan_agents')) ?? []) as AgentConfig[];
+  if (agents.length > 0) {
+    const withSkills = agents.map((agent) => ({
+      ...createAgent(),
+      ...agent,
+      skills: agent.skills && typeof agent.skills.orders === 'boolean' ? agent.skills : { orders: true },
+    }));
+    return withSkills.find((agent) => agent.isDefault && agent.autoReply) ?? withSkills.find((agent) => agent.autoReply) ?? withSkills[0];
+  }
+  const legacy = (await readSingleton('sultan_store_settings')) as { agentConfig?: Partial<AgentConfig> } | null;
+  return createAgent({ ...(legacy?.agentConfig ?? {}), isDefault: true });
 }
 
 // قراءة محادثة مخزنة على الخادم — سجل واحد لكل محادثة في جدول Conversation بعمود JSONB
@@ -62,14 +70,200 @@ function message(content: string, sender: ConversationMessage['sender'], via: Co
   return { id: crypto.randomUUID(), sender, via, content, at: Date.now() };
 }
 
-// توليد رد الوكيل عبر Kimi بموجه النظام المبني من إعدادات المتجر وبياناته — بلا أدوات
-async function askAgent(
+// أدوات مهارة الطلبات — يمرّر مخططها للنموذج وتنفيذها هنا على الخادم عندما يستدعيها الوكيل
+const ORDER_TOOLS: object[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'create_customer',
+      description: 'تسجيل عميل جديد في النظام باسمه (وهاتفه إن ذكره). إذا كان العميل موجوداً مسبقاً تُبلغ بذلك دون تكرار.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'اسم العميل كما ذكره' },
+          phone: { type: 'string', description: 'رقم الهاتف إن ذكره — اختياري' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_invoice',
+      description:
+        'إنشاء فاتورة مقبوضات (بيع للعميل) من بنود طلبه بعد تأكيدها معه. مرّر paid=true للدفع كاش الآن، وpaid=false للذمة (الآجل). استخدم أسماء المنتجات كما في قائمة الكتالوج حرفياً.',
+      parameters: {
+        type: 'object',
+        properties: {
+          customerName: { type: 'string', description: 'اسم العميل المشترك' },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                productName: { type: 'string', description: 'اسم المنتج كما ورد في الكتالوج' },
+                variant: { type: 'string', description: 'التفصيلة (لون/مقاس) إن حددها العميل' },
+                quantity: { type: 'number' },
+                price: { type: 'number', description: 'سعر الوحدة من الكتالوج' },
+                currency: { type: 'string', enum: ['SYP', 'USD'] },
+              },
+              required: ['productName', 'quantity', 'price', 'currency'],
+            },
+          },
+          paid: { type: 'boolean', description: 'هل الدفع كاش الآن؟ الافتراضي false (ذمة)' },
+          notes: { type: 'string' },
+        },
+        required: ['customerName', 'items'],
+      },
+    },
+  },
+];
+
+interface ToolResult {
+  message: string;
+  notes: string[]; // ملاحظات تُدرج كرسائل نظام في المحادثة ليطلع عليها المالك
+}
+
+async function executeCreateCustomer(rawName: unknown, rawPhone: unknown): Promise<ToolResult> {
+  const name = typeof rawName === 'string' ? rawName.trim().slice(0, 80) : '';
+  if (!name) return { message: 'تعذر التسجيل: الاسم فارغ.', notes: [] };
+  const customers = ((await readCollection('sultan_customers')) ?? []) as Customer[];
+  if (customers.some((customer) => customer.name.trim() === name)) {
+    return { message: `العميل «${name}» موجود مسبقاً في النظام.`, notes: [] };
+  }
+  const customer: Customer = {
+    id: crypto.randomUUID(),
+    name,
+    phone: typeof rawPhone === 'string' ? rawPhone.trim().slice(0, 30) : '',
+    address: '',
+    openingBalanceSyp: 0,
+    openingBalanceUsd: 0,
+    notes: 'سجّله وكيل المحادثة',
+    createdAt: Date.now(),
+  };
+  await upsertRecord('sultan_customers', customer as unknown as Record<string, unknown>);
+  return { message: `تم تسجيل العميل الجديد «${name}».`, notes: [`👤 تسجيل عميل جديد عبر الوكيل: ${name}`] };
+}
+
+async function executeCreateInvoice(args: Record<string, unknown>): Promise<ToolResult> {
+  const customerName = typeof args.customerName === 'string' ? args.customerName.trim().slice(0, 80) : '';
+  const rawItems = Array.isArray(args.items) ? args.items : [];
+  const paid = args.paid === true;
+  if (!customerName || rawItems.length === 0) {
+    return { message: 'تعذر إنشاء الفاتورة: اسم العميل أو البنود ناقصة.', notes: [] };
+  }
+
+  const products = ((await readCollection('sultan_products')) ?? []) as Product[];
+  const invoices = ((await readCollection('sultan_invoices')) ?? []) as Invoice[];
+  const number = invoices.reduce((max, invoice) => Math.max(max, invoice.number || 0), 0) + 1;
+
+  const cleanItems: InvoiceItem[] = [];
+  let totalSyp = 0;
+  let totalUsd = 0;
+  for (const raw of rawItems as Record<string, unknown>[]) {
+    const quantity = Math.floor(Number(raw.quantity));
+    const price = Number(raw.price);
+    const currency = raw.currency === 'USD' ? 'USD' : 'SYP';
+    const itemName = String(raw.productName ?? '').trim().slice(0, 120);
+    if (!Number.isFinite(quantity) || quantity < 1 || !Number.isFinite(price) || price < 0 || !itemName) {
+      return { message: 'تعذر إنشاء الفاتورة: أحد البنود فيه كمية أو سعراً غير صالح.', notes: [] };
+    }
+    if (currency === 'USD') totalUsd += quantity * price;
+    else totalSyp += quantity * price;
+
+    // مطابقة المنتج بالاسم لتحديث المخزون وربط البند
+    let productId: string | null = null;
+    let entryBarcode: string | null = null;
+    let displayName = itemName;
+    const product = products.find((item) => item.name.trim().toLowerCase() === itemName.toLowerCase());
+    if (product) {
+      productId = product.id;
+      displayName = product.name;
+      let remaining = quantity;
+      for (const entry of product.entries) {
+        if (remaining <= 0) break;
+        const take = Math.min(entry.quantity, remaining);
+        if (take > 0) {
+          entry.quantity -= take;
+          remaining -= take;
+          entryBarcode = entryBarcode ?? entry.barcode;
+        }
+      }
+      await upsertRecord('sultan_products', product as unknown as Record<string, unknown>);
+    }
+    cleanItems.push({
+      key: crypto.randomUUID(),
+      productId,
+      entryBarcode,
+      name: displayName,
+      currency,
+      quantity,
+      price,
+      discount: 0,
+      notes: typeof raw.variant === 'string' ? raw.variant.trim().slice(0, 60) : '',
+    });
+  }
+
+  const customer = ((await readCollection('sultan_customers')) ?? []).find(
+    (item) => (item as Customer).name.trim() === customerName
+  ) as Customer | undefined;
+
+  const invoice: Invoice = {
+    id: crypto.randomUUID(),
+    number,
+    type: 'مقبوضات',
+    partyId: customer?.id ?? null,
+    partyName: customerName,
+    status: paid ? 'مدفوعة' : 'غير مدفوعة',
+    items: cleanItems,
+    totalSyp,
+    totalUsd,
+    paidSyp: paid ? totalSyp : 0,
+    paidUsd: paid ? totalUsd : 0,
+    remainingSyp: paid ? 0 : totalSyp,
+    remainingUsd: paid ? 0 : totalUsd,
+    notes: typeof args.notes === 'string' && args.notes.trim() ? args.notes.trim() : 'أُنشئت عبر وكيل المحادثة',
+    createdAt: Date.now(),
+  };
+  await upsertRecord('sultan_invoices', invoice as unknown as Record<string, unknown>);
+
+  const totalText = [
+    totalSyp > 0 ? `${Math.round(totalSyp)} ل.س` : '',
+    totalUsd > 0 ? `${Math.round(totalUsd * 100) / 100} $` : '',
+  ].filter(Boolean).join(' و ');
+  return {
+    message: `تم إنشاء فاتورة مقبوضات رقم ${number} للعميل «${customerName}» بقيمة ${totalText} — الحالة: ${paid ? 'مدفوعة كاش' : 'ذمة غير مدفوعة'}.`,
+    notes: [`🧾 فاتورة مقبوضات رقم ${number} — ${customerName} — ${totalText} (${paid ? 'مدفوعة' : 'ذمة'})`],
+  };
+}
+
+async function executeTool(name: string, argumentsJson: string): Promise<ToolResult> {
+  let args: Record<string, unknown> = {};
+  try {
+    args = JSON.parse(argumentsJson || '{}') as Record<string, unknown>;
+  } catch {
+    return { message: 'تعذر قراءة معطيات الأداة.', notes: [] };
+  }
+  try {
+    if (name === 'create_customer') return await executeCreateCustomer(args.name, args.phone);
+    if (name === 'create_invoice') return await executeCreateInvoice(args);
+    return { message: `أداة غير معروفة: ${name}`, notes: [] };
+  } catch {
+    return { message: 'تعذر تنفيذ العملية مؤقتاً — أعد المحاولة.', notes: [] };
+  }
+}
+
+// محادثة مع الوكيل عبر Kimi — مع حلقة أدوات حتى 4 جولات عند تفعيل مهارة الطلبات
+async function runAgent(
   config: AgentConfig,
   customerName: string,
-  history: { role: 'user' | 'assistant'; content: string }[]
-): Promise<string | null> {
+  history: ChatMessage[],
+  withOrders: boolean
+): Promise<{ text: string | null; notes: string[] }> {
   const apiKey = process.env.KIMI_API_KEY?.trim();
-  if (!apiKey) return null;
+  if (!apiKey) return { text: null, notes: [] };
+
   const products = ((await readCollection('sultan_products')) ?? []) as Product[];
   const customers = ((await readCollection('sultan_customers')) ?? []) as Customer[];
   const invoices = ((await readCollection('sultan_invoices')) ?? []) as Invoice[];
@@ -79,17 +273,38 @@ async function askAgent(
     buildCatalogDigestFromProducts(products),
     buildCustomerContextFromData(customerName, customers, invoices)
   );
-  const upstream = await fetch(`${(process.env.KIMI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: process.env.KIMI_MODEL || DEFAULT_MODEL,
-      messages: [{ role: 'system', content: system }, ...history],
-    }),
-  });
-  if (!upstream.ok) return null;
-  const payload = (await upstream.json().catch(() => null)) as { choices?: { message?: { content?: string } }[] } | null;
-  return payload?.choices?.[0]?.message?.content ?? null;
+  const tools = withOrders ? ORDER_TOOLS : undefined;
+
+  const notes: string[] = [];
+  for (let round = 0; round < 4; round++) {
+    const upstream = await fetch(`${(process.env.KIMI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: process.env.KIMI_MODEL || DEFAULT_MODEL,
+        messages: [{ role: 'system', content: system }, ...history],
+        ...(tools ? { tools } : {}),
+      }),
+    });
+    if (!upstream.ok) return { text: null, notes };
+    const payload = (await upstream.json().catch(() => null)) as {
+      choices?: { message?: ChatMessage }[];
+    } | null;
+    const reply = payload?.choices?.[0]?.message;
+    if (!reply) return { text: null, notes };
+
+    if (reply.tool_calls && reply.tool_calls.length > 0) {
+      history.push({ role: 'assistant', content: reply.content ?? '', tool_calls: reply.tool_calls });
+      for (const call of reply.tool_calls) {
+        const result = await executeTool(call.function.name, call.function.arguments);
+        notes.push(...result.notes);
+        history.push({ role: 'tool', content: result.message, tool_call_id: call.id, name: call.function.name });
+      }
+      continue;
+    }
+    return { text: reply.content ?? null, notes };
+  }
+  return { text: 'تعذر إكمال الطلب الآن — اطلب من العميل إعادة صياغة طلبه من فضلك.', notes };
 }
 
 // تطبيق سيرات العمل المفعّلة المطابقة لرسالة العميل لحظة وصولها (كلمة مفتاحية أو عميل جديد)
@@ -142,7 +357,7 @@ export async function POST(request: Request) {
   if (!customerName) return NextResponse.json({ error: 'اسم العميل مطلوب' }, { status: 400 });
   if (!text) return NextResponse.json({ error: 'الرسالة فارغة' }, { status: 400 });
 
-  const agent = await loadAgentConfig();
+  const agent = await loadDefaultAgent();
 
   // محادثة قائمة أو جديدة
   let conversation = conversationId ? await readConversation(conversationId) : null;
@@ -166,20 +381,25 @@ export async function POST(request: Request) {
 
   let reply: string | null = null;
   if (agent.autoReply) {
-    // سير العمل المطابقة أولاً، وإلا رد الوكيل العام
+    // سير العمل المطابقة أولاً، وإلا رد الوكيل (مع أدوات مهارة الطلبات عند تفعيلها)
     const workflowReplies = await applyWorkflows(conversation, text, isNew);
     if (workflowReplies === 0) {
-      const history = conversation.messages.slice(-MAX_HISTORY)
+      const history: ChatMessage[] = conversation.messages
+        .slice(-MAX_HISTORY)
         .filter((item) => item.sender !== 'system') // رسائل النظام الداخلية لا تُمرَّر للنموذج
         .map((item) => ({
           role: item.sender === 'customer' ? ('user' as const) : ('assistant' as const),
           content: item.content,
         }));
-      reply = await askAgent(agent, customerName, history);
+      const result = await runAgent(agent, customerName, history, agent.skills.orders === true);
+      reply = result.text;
+      for (const note of result.notes) {
+        conversation.messages.push(message(note, 'system', 'workflow'));
+      }
       if (reply) conversation.messages.push(message(reply, 'shop', 'agent'));
     }
   }
-  if (!reply && conversation.messages.length <= 2 && !agent.autoReply) {
+  if (!reply && !agent.autoReply) {
     // الوكيل متوقف: رسالة ودية تمهّد لتدخل المالك
     reply = 'شكراً لتواصلك مع متجر قطن سلطان. سجّلنا رسالتك وسيرد عليك صاحب المحل في أقرب وقت.';
     conversation.messages.push(message(reply, 'shop', 'workflow'));
