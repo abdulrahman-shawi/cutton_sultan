@@ -1,5 +1,5 @@
 // components/inbox/types.ts — محادثات العملاء مع الوكيل/المحل (تخزين محلي)
-export type MessageSender = 'customer' | 'shop'; // من أرسل؟ العميل أو المحل (المالك/الوكيل)
+export type MessageSender = 'customer' | 'shop' | 'system'; // من أرسل؟ العميل، المحل، أو إشعار نظام داخلي
 export type MessageVia = 'manual' | 'agent' | 'workflow'; // يدوي، توليد الوكيل، أو سير عمل
 
 export interface ConversationMessage {
@@ -17,6 +17,8 @@ export interface Conversation {
   messages: ConversationMessage[];
   createdAt: number;
   updatedAt: number;
+  // وقت آخر متابعة تلقائية (سير عمل زمني) — يمنع تكرار الإطلاق قبل رسالة عميل جديدة
+  lastAutoFollowUpAt?: number;
 }
 
 export const CONVERSATIONS_STORAGE_KEY = 'sultan_conversations';

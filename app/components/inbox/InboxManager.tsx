@@ -59,12 +59,15 @@ function loadWorkflows(): Workflow[] {
   }
 }
 
-// تحويل رسائل المحادثة إلى صيغة النموذج: العميل = user، المحل/الوكيل = assistant
+// تحويل رسائل المحادثة إلى صيغة النموذج: العميل = user، المحل/الوكيل = assistant، ورسائل النظام الداخلية تُستبعد
 function toChatMessages(conversation: Conversation): ChatMessage[] {
-  return conversation.messages.slice(-30).map((message) => ({
-    role: message.sender === 'customer' ? 'user' : 'assistant',
-    content: message.content,
-  }));
+  return conversation.messages
+    .filter((message) => message.sender !== 'system')
+    .slice(-30)
+    .map((message) => ({
+      role: message.sender === 'customer' ? 'user' : 'assistant',
+      content: message.content,
+    }));
 }
 
 export default function InboxManager() {
@@ -162,7 +165,7 @@ export default function InboxManager() {
 
   const handleCustomerMessage = async (conversation: Conversation, text: string) => {
     // 1) سير العمل المطابقة لها أولوية الرد المحدد
-    const matched = workflows.find((workflow) => workflowMatchesMessage(workflow, text));
+    const matched = workflows.find((workflow) => workflowMatchesMessage(workflow, { text, isNewConversation: false }));
     if (matched) {
       let replyCount = 0;
       const outcome = executeWorkflowActions(matched, conversation.customerName, {

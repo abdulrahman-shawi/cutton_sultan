@@ -106,6 +106,13 @@ export default function ChatWindow({ conversation, agentName, autoReply, busy, o
           </div>
         )}
         {conversation.messages.map((message) => {
+          if (message.sender === 'system') {
+            return (
+              <p key={message.id} className="text-center text-[11px] text-slate-400 bg-slate-100/80 rounded-full w-fit mx-auto px-3 py-1">
+                {message.content}
+              </p>
+            );
+          }
           const isCustomer = message.sender === 'customer';
           const label = viaLabel(message, agentName);
           return (

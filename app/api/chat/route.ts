@@ -92,10 +92,10 @@ async function askAgent(
   return payload?.choices?.[0]?.message?.content ?? null;
 }
 
-// تطبيق سيرات العمل المفعّلة المطابقة لرسالة العميل قبل رد الوكيل العام
-async function applyWorkflows(conversation: Conversation, text: string): Promise<number> {
+// تطبيق سيرات العمل المفعّلة المطابقة لرسالة العميل لحظة وصولها (كلمة مفتاحية أو عميل جديد)
+async function applyWorkflows(conversation: Conversation, text: string, isNewConversation: boolean): Promise<number> {
   const workflows = (((await readCollection('sultan_workflows')) ?? []) as Workflow[]).filter((workflow) =>
-    workflowMatchesMessage(workflow, text)
+    workflowMatchesMessage(workflow, { text, isNewConversation })
   );
   let replies = 0;
   for (const workflow of workflows) {
@@ -105,7 +105,7 @@ async function applyWorkflows(conversation: Conversation, text: string): Promise
         conversation.messages.push(message(`📌 ${replyText}`, 'shop', 'workflow'));
         replyCount++;
       },
-      notify: (note) => conversation.messages.push(message(`🔔 ${note}`, 'shop', 'workflow')),
+      notify: (note) => conversation.messages.push(message(`🔔 ${note}`, 'system', 'workflow')),
     });
     replies += replyCount;
     const runs = [{ at: Date.now(), detail: `محادثة ${conversation.customerName}` }, ...workflow.runs].slice(0, 20);
@@ -167,12 +167,14 @@ export async function POST(request: Request) {
   let reply: string | null = null;
   if (agent.autoReply) {
     // سير العمل المطابقة أولاً، وإلا رد الوكيل العام
-    const workflowReplies = await applyWorkflows(conversation, text);
+    const workflowReplies = await applyWorkflows(conversation, text, isNew);
     if (workflowReplies === 0) {
-      const history = conversation.messages.slice(-MAX_HISTORY).map((item) => ({
-        role: item.sender === 'customer' ? ('user' as const) : ('assistant' as const),
-        content: item.content,
-      }));
+      const history = conversation.messages.slice(-MAX_HISTORY)
+        .filter((item) => item.sender !== 'system') // رسائل النظام الداخلية لا تُمرَّر للنموذج
+        .map((item) => ({
+          role: item.sender === 'customer' ? ('user' as const) : ('assistant' as const),
+          content: item.content,
+        }));
       reply = await askAgent(agent, customerName, history);
       if (reply) conversation.messages.push(message(reply, 'shop', 'agent'));
     }

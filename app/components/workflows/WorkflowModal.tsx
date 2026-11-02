@@ -12,6 +12,20 @@ interface WorkflowModalProps {
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
+type TriggerKind = WorkflowTrigger['kind'];
+
+const TRIGGER_OPTIONS: { value: TriggerKind; label: string; hint: string }[] = [
+  { value: 'message', label: 'رسالة تتضمن كلمة', hint: 'عند وصول رسالة من العميل تحوي الكلمة المفتاحية' },
+  { value: 'new_customer', label: 'عميل جديد', hint: 'عند أول رسالة يفتح بها عميل محادثة جديدة مع المتجر' },
+  { value: 'no_reply', label: 'عدم ردّ المحل', hint: 'عندما تمرّ دقائق بلا ردّ على آخر رسالة للعميل' },
+  { value: 'inactive', label: 'انتهاء المحادثة', hint: 'عندما لا يتحدث العميل منذ عدد ساعات محدد' },
+  { value: 'manual', label: 'تشغيل يدوي', hint: 'يُشغَّل فقط بزر «تشغيل» — مناسب للرسائل الدورية' },
+];
+
+function triggerKindOf(trigger: WorkflowTrigger | undefined): TriggerKind {
+  return trigger?.kind ?? 'message';
+}
+
 function createAction(kind: WorkflowAction['kind']): WorkflowAction {
   return kind === 'reply'
     ? { kind: 'reply', text: '' }
@@ -21,8 +35,10 @@ function createAction(kind: WorkflowAction['kind']): WorkflowAction {
 export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModalProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
-  const [triggerKind, setTriggerKind] = useState<'message' | 'manual'>(initial?.trigger.kind ?? 'message');
+  const [triggerKind, setTriggerKind] = useState<TriggerKind>(triggerKindOf(initial?.trigger));
   const [keyword, setKeyword] = useState(initial?.trigger.kind === 'message' ? initial.trigger.keyword : '');
+  const [minutes, setMinutes] = useState(initial?.trigger.kind === 'no_reply' ? String(initial.trigger.minutes) : '30');
+  const [hours, setHours] = useState(initial?.trigger.kind === 'inactive' ? String(initial.trigger.hours) : '24');
   const [actions, setActions] = useState<WorkflowAction[]>(initial?.actions ?? [{ kind: 'reply', text: '' }]);
   const [error, setError] = useState('');
 
@@ -32,12 +48,27 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
 
   const handleSubmit = () => {
     if (!name.trim()) return setError('أدخل اسماً لسير العمل');
-    if (triggerKind === 'message' && !keyword.trim()) return setError('أدخل الكلمة المفتاحية للمحفّز');
+    let trigger: WorkflowTrigger;
+    if (triggerKind === 'message') {
+      if (!keyword.trim()) return setError('أدخل الكلمة المفتاحية للمحفّز');
+      trigger = { kind: 'message', keyword: keyword.trim() };
+    } else if (triggerKind === 'new_customer') {
+      trigger = { kind: 'new_customer' };
+    } else if (triggerKind === 'no_reply') {
+      const value = Math.floor(Number(minutes));
+      if (!Number.isFinite(value) || value < 1) return setError('أدخل عدد دقائق صحيحاً (1 على الأقل)');
+      trigger = { kind: 'no_reply', minutes: value };
+    } else if (triggerKind === 'inactive') {
+      const value = Math.floor(Number(hours));
+      if (!Number.isFinite(value) || value < 1) return setError('أدخل عدد ساعات صحيحاً (1 على الأقل)');
+      trigger = { kind: 'inactive', hours: value };
+    } else {
+      trigger = { kind: 'manual' };
+    }
     if (actions.length === 0) return setError('أضف إجراءً واحداً على الأقل');
     for (let i = 0; i < actions.length; i++) {
       if (!actions[i].text.trim()) return setError(`أدخل نص الإجراء رقم ${i + 1}`);
     }
-    const trigger: WorkflowTrigger = triggerKind === 'message' ? { kind: 'message', keyword: keyword.trim() } : { kind: 'manual' };
     onSave(
       { name: name.trim(), enabled, trigger, actions: actions.map((action) => ({ ...action, text: action.text.trim() })) },
       initial?.id ?? null
@@ -76,28 +107,19 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
           </div>
 
           <div>
-            <span className="block text-sm font-medium text-slate-700 mb-1.5">المحفّز — متى يعمل؟</span>
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 mb-3">
-              <button
-                type="button"
-                onClick={() => setTriggerKind('message')}
-                className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                  triggerKind === 'message' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                رسالة واردة
-              </button>
-              <button
-                type="button"
-                onClick={() => setTriggerKind('manual')}
-                className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                  triggerKind === 'manual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                تشغيل يدوي
-              </button>
-            </div>
-            {triggerKind === 'message' ? (
+            <label htmlFor="workflow-trigger" className="block text-sm font-medium text-slate-700 mb-1.5">المحفّز — متى يعمل؟</label>
+            <select
+              id="workflow-trigger"
+              value={triggerKind}
+              onChange={(event) => setTriggerKind(event.target.value as TriggerKind)}
+              className={`${inputClass} bg-white cursor-pointer mb-3`}
+            >
+              {TRIGGER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+
+            {triggerKind === 'message' && (
               <div>
                 <label htmlFor="workflow-keyword" className="block text-xs font-medium text-slate-600 mb-1">
                   الكلمة المفتاحية في رسالة العميل <span className="text-red-500">*</span>
@@ -110,13 +132,46 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
                   placeholder="مثال: سعر، توفر، عنوان"
                   className={inputClass}
                 />
-                <p className="text-xs text-slate-400 mt-1.5">
-                  إذا احتوت رسالة العميل هذه الكلمة طُبّق السير تلقائياً في الوارد.
-                </p>
               </div>
-            ) : (
-              <p className="text-xs text-slate-400">يُشغَّل فقط بزر «تشغيل» من القائمة — مناسب للرسائل الدورية.</p>
             )}
+            {triggerKind === 'no_reply' && (
+              <div>
+                <label htmlFor="workflow-minutes" className="block text-xs font-medium text-slate-600 mb-1">
+                  المهلة بالدقائق قبل اعتبارها عدم رد <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="workflow-minutes"
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  value={minutes}
+                  onChange={(event) => setMinutes(event.target.value)}
+                  className={`${inputClass} text-center`}
+                />
+              </div>
+            )}
+            {triggerKind === 'inactive' && (
+              <div>
+                <label htmlFor="workflow-hours" className="block text-xs font-medium text-slate-600 mb-1">
+                  عدد الساعات من صمت العميل <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="workflow-hours"
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  value={hours}
+                  onChange={(event) => setHours(event.target.value)}
+                  className={`${inputClass} text-center`}
+                />
+              </div>
+            )}
+            <p className="text-xs text-slate-400 mt-1.5">
+              {TRIGGER_OPTIONS.find((option) => option.value === triggerKind)?.hint}
+              {(triggerKind === 'no_reply' || triggerKind === 'inactive') && ' — يفحصه النظام تلقائياً كل 15 دقيقة.'}
+            </p>
           </div>
 
           <div>
