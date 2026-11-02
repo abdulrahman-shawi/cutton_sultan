@@ -5,23 +5,59 @@ import type { Product } from '../components/products/types';
 import type { Customer } from '../components/customers/types';
 import type { Invoice } from '../components/invoices/types';
 
-// كتالوج مضغوط يُعرض على الوكيل فيردّ على استفسارات العملاء عن المنتجات والأسعار والتوفر
-export function buildCatalogDigestFromProducts(products: Product[], limit = 60): string {
+// كتالوج مضغوط يُعرض على الوكيل فيردّ على استفسارات العملاء عن المنتجات والأسعار والتوفر.
+// ترتيب ذكي: المنتجات المتوفرة أولاً (حسب مجموع مخزونها) فلا يختفي صنف كامل بسبب قصّ القائمة،
+// وكل تفصيلة متوفرة تُدرج كاملة — القصّ القديم بحدّ 60 تفصيلة كان يخفي بقية المنتجات عن الوكيل.
+export function buildCatalogDigestFromProducts(products: Product[], maxProducts = 200): string {
+  if (products.length === 0) return '(لا توجد منتجات مسجلة بعد)';
+
+  const ranked = products
+    .map((product) => ({
+      product,
+      inStock: product.entries.filter((entry) => entry.quantity > 0),
+      outStock: product.entries.filter((entry) => entry.quantity <= 0),
+    }))
+    .sort((a, b) => {
+      const aTotal = a.inStock.reduce((sum, entry) => sum + entry.quantity, 0);
+      const bTotal = b.inStock.reduce((sum, entry) => sum + entry.quantity, 0);
+      if (aTotal > 0 && bTotal === 0) return -1;
+      if (aTotal === 0 && bTotal > 0) return 1;
+      return bTotal - aTotal;
+    });
+
   const lines: string[] = [];
-  let used = 0;
-  for (const product of products) {
-    if (used >= limit) break;
+  const GLOBAL_LINE_CAP = 1500; // سقف أمان إجمالي — نادراً ما يُبلَّغ في المتاجر العادية
+  let usedProducts = 0;
+
+  for (const { product, inStock, outStock } of ranked) {
+    if (usedProducts >= maxProducts || lines.length >= GLOBAL_LINE_CAP) break;
+    const total = inStock.reduce((sum, entry) => sum + entry.quantity, 0);
+    const priceSet = new Map<string, boolean>();
     for (const entry of product.entries) {
-      if (used >= limit) break;
+      priceSet.set(`${entry.salePrice} ${entry.currency === 'USD' ? '$' : 'ل.س'}`, true);
+    }
+    const prices = Array.from(priceSet.keys()).slice(0, 4).join(' / ');
+    lines.push(
+      `▪ ${product.name} — موديل ${product.modelNumber || '—'} — السعر: ${prices}${priceSet.size > 4 ? ' ...' : ''} — المتوفر: ${total} قطعة`
+    );
+    usedProducts++;
+
+    if (inStock.length === 0) {
+      lines.push(`   (نفد حالياً — ${outStock.length} تفصيلة بكمية صفر)`);
+      continue;
+    }
+    for (const entry of inStock) {
+      if (lines.length >= GLOBAL_LINE_CAP) break;
       const variant = [entry.color, entry.size].filter(Boolean).join(' / ');
       lines.push(
-        `- ${product.name}${variant ? ` (${variant})` : ''} — موديل ${product.modelNumber || '—'} — ` +
-          `${entry.salePrice} ${entry.currency === 'USD' ? '$' : 'ل.س'} — المتوفر: ${entry.quantity} قطعة`
+        `   · ${variant || 'بدون تفصيلة'} — ${entry.salePrice} ${entry.currency === 'USD' ? '$' : 'ل.س'} — ${entry.quantity} قطعة`
       );
-      used++;
+    }
+    if (outStock.length > 0) {
+      lines.push(`   · (نفد من هذا المنتج أيضاً: ${outStock.length} تفصيلة)`);
     }
   }
-  return lines.length > 0 ? lines.join('\n') : '(لا توجد منتجات مسجلة بعد)';
+  return lines.join('\n');
 }
 
 // سياق العميل: إجمالي مشترياته ومتبقي ذمته من فواتير المقبوضات — ليذكّر الوكيل الرصيد عند الحاجة
@@ -75,9 +111,11 @@ export function buildAgentSystemPrompt(
     '',
     '## قواعد صارمة:',
     '1. أجب باللغة العربية فقط، بأسلوب موجز وودود يناسب الرسائل النصية القصيرة (فقرة أو فقرتان كحد أقصى).',
-    '2. استخدم فقط الأسماء والأسعار والكميات الواردة في قائمة المنتجات أعلاه — ممنوع اختراع منتجات أو أسعار. إذا لم يتوفر المنتج فقل ذلك بوضوح واقترح أقرب بديل من القائمة.',
-    '3. لا تذكر أرقام حسابات أو مصاريف المحل، ولا تعد بخصومات أو أسعار غير موجودة في القائمة.',
-    '4. إذا سأل العميل عن رصيده أو ذمته فأجبه بالأرقام الواردة في بياناته أعلاه فقط.',
-    '5. عند انتهاء الحاجة، أغلق الحوار بجملة مهذبة قصيرة.',
+    '2. قائمة المنتجات أعلاه هي مصدر الحقيقة الوحيد — ابحث فيها كاملة قبل أي حكم. ممنوع اختراع منتجات أو أسعار.',
+    '3. إذا طلب العميل صنفاً ولم تجده بالاسم نفسه، فابحث عن أقرب معنى (مثال: «سليب» قد يكون مسجلاً «شرعي» أو «فانيلا» أو «بنطال» — والعكس). لا تقل «لا يوجد» أبداً قبل أن تعرض ما لديك من أصناف مشابهة متوفرة، وإن لم يوجد شيء قريب اعرض أشهر المنتجات المتوفرة بديلاً.',
+    '4. علامة «(نفد حالياً)» تعني أن المنتج مسجل لكن كميته صفر — إذا سأل عنه فأخبره أنه نفد مؤخراً واقترح بديلاً متوفراً، لا أنه غير موجود أصلاً.',
+    '5. لا تذكر أرقام حسابات أو مصاريف المحل، ولا تعد بخصومات أو أسعار غير موجودة في القائمة.',
+    '6. إذا سأل العميل عن رصيده أو ذمته فأجبه بالأرقام الواردة في بياناته أعلاه فقط.',
+    '7. عند انتهاء الحاجة، أغلق الحوار بجملة مهذبة قصيرة.',
   ].join('\n');
 }
