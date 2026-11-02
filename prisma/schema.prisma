@@ -64,6 +64,20 @@ model DailyJournal {
   updatedAt DateTime @updatedAt
 }
 
+// محادثات العملاء مع وكيل الذكاء الاصطناعي: سجل واحد لكل محادثة وبياناتها الكاملة بعمود JSONB
+model Conversation {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+// أتمتة سير العمل للأدمن: محفّز (رسالة واردة/يدوي) وإجراءات (رد/إشعار) وسجل تشغيل
+model Workflow {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 // إعدادات المتجر: سجل واحد (id = "store")
 model StoreSetting {
   id        String   @id

@@ -3,9 +3,9 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AlertCircle, Bot, Check, RotateCcw, Send, User } from 'lucide-react';
-import { AGENT_STORAGE_KEY, AGENT_TONES, DEFAULT_AGENT, type AgentConfig } from './types';
+import { AGENT_TONES, DEFAULT_AGENT, type AgentConfig } from './types';
 import { callAiChat } from '../../lib/aiClient';
-import { buildAgentSystemPrompt } from '../../lib/agentPrompt';
+import { buildAgentSystemPromptLocal, loadAgentConfig, saveAgentConfig } from '../../lib/agentClient';
 import type { ChatMessage } from '../../lib/ai';
 
 interface TestMessage {
@@ -17,21 +17,10 @@ interface TestMessage {
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition';
 
-function loadAgent(): AgentConfig {
-  if (typeof window === 'undefined') return DEFAULT_AGENT;
-  try {
-    const raw = window.localStorage.getItem(AGENT_STORAGE_KEY);
-    if (!raw) return DEFAULT_AGENT;
-    return { ...DEFAULT_AGENT, ...(JSON.parse(raw) as Partial<AgentConfig>) };
-  } catch {
-    return DEFAULT_AGENT;
-  }
-}
-
 const TEST_CUSTOMER = 'عميل تجريبي';
 
 export default function AgentsManager() {
-  const [form, setForm] = useState<AgentConfig>(loadAgent);
+  const [form, setForm] = useState<AgentConfig>(loadAgentConfig);
   const [saved, setSaved] = useState<AgentConfig>(form);
   const [toast, setToast] = useState<string | null>(null);
   const [testMessages, setTestMessages] = useState<TestMessage[]>([]);
@@ -65,12 +54,8 @@ export default function AgentsManager() {
     };
     setForm(cleaned);
     setSaved(cleaned);
-    try {
-      window.localStorage.setItem(AGENT_STORAGE_KEY, JSON.stringify(cleaned));
-    } catch {
-      // التخزين غير متاح في هذا المتصفح
-    }
-    setToast('تم حفظ إعدادات الوكيل — سيستخدم في المحادثات الجديدة فوراً');
+    saveAgentConfig(cleaned);
+    setToast('تم حفظ إعدادات الوكيل — ستُستخدم في محادثات العملاء فوراً');
   };
 
   const handleReset = () => {
@@ -95,7 +80,7 @@ export default function AgentsManager() {
     setTestBusy(true);
     try {
       // الاختبار يجري بالإعدادات الحالية في النموذج حتى قبل الحفظ
-      const reply = await callAiChat(history, { system: buildAgentSystemPrompt(form, TEST_CUSTOMER), tools: false });
+      const reply = await callAiChat(history, { system: buildAgentSystemPromptLocal(form, TEST_CUSTOMER), tools: false });
       setTestMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'agent', content: reply }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر الرد — حاول مجدداً');

@@ -10,8 +10,6 @@ export interface AgentConfig {
   autoReply: boolean; // الرد التلقائي على رسائل العملاء
 }
 
-export const AGENT_STORAGE_KEY = 'sultan_agent_config';
-
 export const AGENT_TONES: AgentTone[] = ['ودود', 'رسمي', 'مختصر'];
 
 export const DEFAULT_AGENT: AgentConfig = {

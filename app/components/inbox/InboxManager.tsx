@@ -9,7 +9,7 @@ import ChatWindow, { type ComposerMode } from './ChatWindow';
 import ConfirmDialog from '../categories/ConfirmDialog';
 import type { Customer } from '../customers/types';
 import { CUSTOMERS_STORAGE_KEY } from '../customers/types';
-import { DEFAULT_AGENT, AGENT_STORAGE_KEY, type AgentConfig } from '../agents/types';
+import type { AgentConfig } from '../agents/types';
 import {
   WORKFLOWS_STORAGE_KEY,
   executeWorkflowActions,
@@ -17,7 +17,9 @@ import {
   type Workflow,
 } from '../workflows/types';
 import { callAiChat } from '../../lib/aiClient';
-import { buildAgentSystemPrompt } from '../../lib/agentPrompt';
+import { buildAgentSystemPromptLocal, loadAgentConfig } from '../../lib/agentClient';
+import { syncFromServer } from '../../lib/data';
+import { ExternalLink } from 'lucide-react';
 import type { ChatMessage } from '../../lib/ai';
 import { createConversation, CONVERSATIONS_STORAGE_KEY, type Conversation, type ConversationMessage } from './types';
 
@@ -45,17 +47,6 @@ function loadCustomers(): Customer[] {
   }
 }
 
-function loadAgent(): AgentConfig {
-  if (typeof window === 'undefined') return DEFAULT_AGENT;
-  try {
-    const raw = window.localStorage.getItem(AGENT_STORAGE_KEY);
-    if (!raw) return DEFAULT_AGENT;
-    return { ...DEFAULT_AGENT, ...(JSON.parse(raw) as Partial<AgentConfig>) };
-  } catch {
-    return DEFAULT_AGENT;
-  }
-}
-
 function loadWorkflows(): Workflow[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -79,7 +70,7 @@ function toChatMessages(conversation: Conversation): ChatMessage[] {
 export default function InboxManager() {
   const [conversations, setConversations] = useState<Conversation[]>(loadConversations);
   const [customers] = useState<Customer[]>(loadCustomers);
-  const [agent] = useState<AgentConfig>(loadAgent);
+  const [agent] = useState<AgentConfig>(loadAgentConfig);
   const [workflows, setWorkflows] = useState<Workflow[]>(loadWorkflows);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -117,6 +108,22 @@ export default function InboxManager() {
     return () => clearTimeout(timer);
   }, [toast, notice]);
 
+  // استقبال رسائل العملاء الحقيقيين القادمة عبر /api/chat: سحب من الخادم كل 20 ثانية وتحديث القائمة
+  useEffect(() => {
+    let cancelled = false;
+    const pull = async () => {
+      const ok = await syncFromServer();
+      if (!ok || cancelled) return;
+      const latest = loadConversations();
+      setConversations((prev) => (JSON.stringify(prev) !== JSON.stringify(latest) ? latest : prev));
+    };
+    const timer = setInterval(() => void pull(), 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   const sorted = useMemo(
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
     [conversations]
@@ -136,7 +143,7 @@ export default function InboxManager() {
   };
 
   const generateAgentReply = async (conversation: Conversation, extraUserMessage?: string): Promise<string> => {
-    const system = buildAgentSystemPrompt(agent, conversation.customerName);
+    const system = buildAgentSystemPromptLocal(agent, conversation.customerName);
     const history = toChatMessages(conversation);
     if (extraUserMessage) history.push({ role: 'user', content: extraUserMessage });
     return callAiChat(history, { system, tools: false });
@@ -211,7 +218,7 @@ export default function InboxManager() {
     if (!active) return null;
     setError(null);
     try {
-      const system = buildAgentSystemPrompt(agent, active.customerName);
+      const system = buildAgentSystemPromptLocal(agent, active.customerName);
       const history = toChatMessages(active);
       history.push({
         role: 'user',
@@ -263,13 +270,24 @@ export default function InboxManager() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      <div className="mb-4">
-        <p className="text-xs font-semibold text-blue-600 mb-1.5">تواصل العملاء</p>
-        <h1 className="text-2xl font-bold text-slate-900">محادثات العملاء</h1>
-        <p className="text-sm text-slate-500 mt-1.5">
-          محادثات الذكاء الاصطناعي مع العملاء — محاكاة رسائل العملاء ورد الوكيل الفوري من بيانات المتجر،
-          أو توجيه الوكيل بما يقوله، وإدارة الردود من صفحة الوكيل وسير العمل.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+        <div>
+          <p className="text-xs font-semibold text-blue-600 mb-1.5">تواصل العملاء</p>
+          <h1 className="text-2xl font-bold text-slate-900">محادثات العملاء</h1>
+          <p className="text-sm text-slate-500 mt-1.5">
+            محادثات الذكاء الاصطناعي مع العملاء من صفحتهم العامة «محادثة المتجر» — تصل رسائلهم هنا
+            ويرد الوكيل تلقائياً، ويمكنك التدخل يدوياً أو توجيه الوكيل أو تثبيت قواعد من سير العمل.
+          </p>
+        </div>
+        <a
+          href="/chat"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 text-slate-600 text-sm font-medium px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+        >
+          <ExternalLink className="w-4 h-4" aria-hidden="true" />
+          صفحة العميل /chat
+        </a>
       </div>
 
       {error && (
