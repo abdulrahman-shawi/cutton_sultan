@@ -2,16 +2,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bell, Check, Pencil, Play, Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
+import { Check, Pencil, Play, Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
 import WorkflowModal from './WorkflowModal';
 import ConfirmDialog from '../categories/ConfirmDialog';
+import { runWorkflowGraph } from './engine';
 import {
   WORKFLOWS_STORAGE_KEY,
-  actionLabel,
-  executeWorkflowActions,
+  migrateWorkflow,
+  nodeKindLabel,
   triggerLabel,
   type Workflow,
-  type WorkflowAction,
+  type WorkflowNode,
   type WorkflowTrigger,
 } from './types';
 import { CONVERSATIONS_STORAGE_KEY, createConversation, type Conversation, type ConversationMessage } from '../inbox/types';
@@ -22,7 +23,7 @@ function loadWorkflows(): Workflow[] {
     const raw = window.localStorage.getItem(WORKFLOWS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as Workflow[]) : [];
+    return Array.isArray(parsed) ? (parsed as Partial<Workflow>[]).map((workflow) => migrateWorkflow(workflow)) : [];
   } catch {
     return [];
   }
@@ -84,15 +85,15 @@ export default function WorkflowsManager() {
     );
   };
 
-  const handleSave = (data: { name: string; enabled: boolean; trigger: WorkflowTrigger; actions: WorkflowAction[] }, id: string | null) => {
+  const handleSave = (
+    data: { name: string; enabled: boolean; trigger: WorkflowTrigger; triggerNextId: string | null; nodes: WorkflowNode[] },
+    id: string | null
+  ) => {
     if (id) {
       setWorkflows((prev) => prev.map((workflow) => (workflow.id === id ? { ...workflow, ...data } : workflow)));
       setToast('تم تحديث سير العمل');
     } else {
-      setWorkflows((prev) => [
-        { ...data, id: crypto.randomUUID(), runs: [], createdAt: Date.now() },
-        ...prev,
-      ]);
+      setWorkflows((prev) => [{ ...data, id: crypto.randomUUID(), runs: [], createdAt: Date.now() }, ...prev]);
       setToast('تم إنشاء سير العمل');
     }
     setModal({ open: false, workflow: null });
@@ -109,8 +110,8 @@ export default function WorkflowsManager() {
     setToast('تم حذف سير العمل');
   };
 
-  // التشغيل اليدوي: يستهدف أحدث محادثة قائمة (يُنشئ واحدة تجريبية عند غيابها) ليُرسل إليها رد الوكيل
-  const handleRun = (workflow: Workflow) => {
+  // التشغيل اليدوي: يمر على المخطط من أول عقدة عبر محرك العقد نفسه المستخدم على الخادم
+  const handleRun = async (workflow: Workflow) => {
     let target = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
     if (!target) {
       target = createConversation(null, 'عميل تجريبي');
@@ -126,12 +127,16 @@ export default function WorkflowsManager() {
         )
       );
     };
-    const outcome = executeWorkflowActions(workflow, conversation.customerName, {
-      reply: (text) => appendMessage({ sender: 'shop', via: 'workflow', content: text }),
-      notify: (text) => setToast(`إشعار من «${workflow.name}»: ${text}`),
+    // في الواجهة لا يُنشأ الطلب فعلياً — يُكتفي بملاحظة، والتنفيذ الحقيقي على خادم المتجر
+    const result = await runWorkflowGraph(workflow, conversation, workflow.triggerNextId, {
+      createOrder: async (_node, customerName) => `🧾 طلب للعميل «${customerName}» — يُنشأ فعلياً على خادم المتجر عند وصوله من صفحة العميل`,
     });
-    logRun(workflow.id, `تشغيل يدوي — ${outcome.detail}`);
-    if (outcome.ran) setToast(`شُغّل «${workflow.name}» — ${outcome.detail}`);
+    // محاكاة ظاهرية للرسائل على أحدث محادثة محلياً
+    for (const message of conversation.messages.slice(-result.steps * 2)) {
+      appendMessage(message);
+    }
+    logRun(workflow.id, `تشغيل يدوي — ${result.steps} عقدة (${result.status === 'waiting' ? 'توقف عند انتظار' : 'اكتمل'})`);
+    setToast(`شُغّل «${workflow.name}» — ${result.steps} عقدة`);
   };
 
   return (
@@ -141,8 +146,8 @@ export default function WorkflowsManager() {
           <p className="text-xs font-semibold text-blue-600 mb-1.5">الأتمتة — للمدير</p>
           <h1 className="text-2xl font-bold text-slate-900">سير العمل</h1>
           <p className="text-sm text-slate-500 mt-1.5">
-            حدّد متى يتدخل النظام تلقائياً في محادثات الوارد: كلمة مفتاحية في رسالة العميل تشغّل ردّ الوكيل
-            أو إشعارك فوراً — أو شغّل السير يدوياً متى شئت.
+            مخططات عقد مرسومة: محفّز (كلمة مفتاحية / عميل جديد / عدم رد / خمول / يدوي) يشغّل سلسلة عقد —
+            رسائل، صور، مواقع، تعيين وكيل، إسناد لموظف، طلبات وفواتير، انتظار، شروط، وانتقالات.
           </p>
         </div>
         <button
@@ -159,7 +164,7 @@ export default function WorkflowsManager() {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 px-6 flex flex-col items-center justify-center text-center">
           <WorkflowIcon className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
           <p className="font-semibold text-slate-700 mb-1">لا سيرات عمل بعد</p>
-          <p className="text-sm text-slate-400 mb-5">أنشئ أول سير: محفّز (كلمة في رسالة العميل) وإجراء (رد الوكيل أو إشعار).</p>
+          <p className="text-sm text-slate-400 mb-5">ارسم أول سير: محفّز وسلسلة عقد تنفذ أنواعاً من القائمة.</p>
           <button
             type="button"
             onClick={() => setModal({ open: true, workflow: null })}
@@ -201,7 +206,7 @@ export default function WorkflowsManager() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleRun(workflow)}
+                    onClick={() => void handleRun(workflow)}
                     title="تشغيل يدوي الآن"
                     className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                   >
@@ -210,7 +215,7 @@ export default function WorkflowsManager() {
                   <button
                     type="button"
                     onClick={() => setModal({ open: true, workflow })}
-                    title="تعديل"
+                    title="فتح المحرر"
                     className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                   >
                     <Pencil className="w-4 h-4" aria-hidden="true" />
@@ -226,19 +231,19 @@ export default function WorkflowsManager() {
                 </div>
               </div>
 
-              {workflow.actions.length > 0 && (
-                <ul className="mt-3 space-y-1.5">
-                  {workflow.actions.map((action, index) => (
-                    <li key={index} className="flex items-start gap-2 text-xs text-slate-500">
-                      {action.kind === 'reply' ? (
-                        <WorkflowIcon className="w-3.5 h-3.5 mt-0.5 text-blue-500 shrink-0" aria-hidden="true" />
-                      ) : (
-                        <Bell className="w-3.5 h-3.5 mt-0.5 text-amber-500 shrink-0" aria-hidden="true" />
-                      )}
-                      <span className="truncate">{actionLabel(action)}</span>
-                    </li>
+              {workflow.nodes.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {workflow.nodes.slice(0, 8).map((node) => (
+                    <span key={node.id} className="inline-flex items-center rounded-full bg-slate-50 border border-slate-100 px-2.5 py-1 text-[10px] font-medium text-slate-500">
+                      {nodeKindLabel(node.kind)}
+                    </span>
                   ))}
-                </ul>
+                  {workflow.nodes.length > 8 && (
+                    <span className="inline-flex items-center rounded-full bg-slate-50 border border-slate-100 px-2.5 py-1 text-[10px] font-medium text-slate-400">
+                      +{workflow.nodes.length - 8}
+                    </span>
+                  )}
+                </div>
               )}
 
               {workflow.runs.length > 0 && (

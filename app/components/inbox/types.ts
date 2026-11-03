@@ -2,12 +2,25 @@
 export type MessageSender = 'customer' | 'shop' | 'system'; // من أرسل؟ العميل، المحل، أو إشعار نظام داخلي
 export type MessageVia = 'manual' | 'agent' | 'workflow'; // يدوي، توليد الوكيل، أو سير عمل
 
+// مرفقات الرسائل: صورة أو موقع جغرافي (تضافه عقد سير العمل)
+export type MessageAttachment =
+  | { kind: 'image'; url: string }
+  | { kind: 'location'; lat: number; lng: number; label: string };
+
 export interface ConversationMessage {
   id: string;
   sender: MessageSender;
   via: MessageVia;
   content: string;
   at: number;
+  attachment?: MessageAttachment;
+}
+
+// تنفيذ معلّق على عقدة «انتظار» — يستأنفه مجدول cron عند حلول موعده
+export interface PendingExecution {
+  workflowId: string;
+  nodeId: string;
+  resumeAt: number;
 }
 
 export interface Conversation {
@@ -17,8 +30,14 @@ export interface Conversation {
   messages: ConversationMessage[];
   createdAt: number;
   updatedAt: number;
+  // وكيل مخصص للمحادثة (عقدة تعيين وكيل) — يتجاوز الوكيل الافتراضي
+  agentId?: string | null;
+  // موظف مُسند إليه العمل (عقدة إسناد)
+  assigneeId?: string | null;
+  assigneeName?: string;
   // وقت آخر متابعة تلقائية (سير عمل زمني) — يمنع تكرار الإطلاق قبل رسالة عميل جديدة
   lastAutoFollowUpAt?: number;
+  pendingExecutions?: PendingExecution[];
 }
 
 export const CONVERSATIONS_STORAGE_KEY = 'sultan_conversations';

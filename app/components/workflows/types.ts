@@ -1,4 +1,5 @@
-// components/workflows/types.ts — أتمتة سير العمل: محفّزات (كلمة مفتاحية/عميل جديد/عدم رد/خمول/يدوي) + إجراءات
+// components/workflows/types.ts — أتمتة سير العمل بنموذج عقد مرسوم (مثل n8n):
+// محفّز (خمسة أنواع) + عقد مرسومة بمواقع قابلة للسحب تتصل ببعضها عبر «التالي» وفروع «إذا»
 export type WorkflowTrigger =
   | { kind: 'message'; keyword: string } // رسالة واردة تتضمن كلمة مفتاحية
   | { kind: 'new_customer' } // أول رسالة من عميل في محادثة جديدة
@@ -6,7 +7,56 @@ export type WorkflowTrigger =
   | { kind: 'inactive'; hours: number } // لم يتحدث العميل منذ X ساعة (انتهاء/برود المحادثة)
   | { kind: 'manual' }; // تشغيل يدوي فقط
 
-export type WorkflowAction = { kind: 'reply'; text: string } | { kind: 'notify'; text: string };
+export type WorkflowNodeKind =
+  | 'reply' // إرسال رسالة نصية
+  | 'image' // إرسال صورة
+  | 'location' // إرسال موقع جغرافي
+  | 'set_agent' // تعيين وكيل معين للمحادثة
+  | 'assign' // إسناد المحادثة إلى موظف
+  | 'order' // إنشاء طلب/فاتورة مقبوضات
+  | 'wait' // الانتظار مدة معينة ثم الاستئناف
+  | 'if' // عقدة شرطية على آخر رسالة للعميل
+  | 'goto'; // الانتقال إلى عقدة محددة
+
+export interface OrderNodeItem {
+  name: string;
+  quantity: number;
+  price: number;
+  currency: 'SYP' | 'USD';
+}
+
+// عقدة واحدة في المخطط: نوعها وموقعها على اللوحة وحقولها حسب النوع وروابطها
+export interface WorkflowNode {
+  id: string;
+  kind: WorkflowNodeKind;
+  position: { x: number; y: number };
+  nextId: string | null; // الخطوة التالية (كل الأنواع ما عدا if/goto)
+  // رسالة/إشعار
+  text?: string;
+  // صورة
+  url?: string;
+  // موقع
+  lat?: number;
+  lng?: number;
+  label?: string;
+  // تعيين وكيل / إسناد موظف
+  agentId?: string;
+  agentName?: string;
+  userId?: string;
+  userName?: string;
+  // طلب/فاتورة
+  items?: OrderNodeItem[];
+  paid?: boolean;
+  // انتظار
+  minutes?: number;
+  // شرطية
+  conditionKeyword?: string;
+  conditionNegate?: boolean;
+  ifTrueId?: string | null;
+  ifFalseId?: string | null;
+  // انتقال
+  targetId?: string | null;
+}
 
 export interface WorkflowRun {
   at: number;
@@ -18,12 +68,70 @@ export interface Workflow {
   name: string;
   enabled: boolean;
   trigger: WorkflowTrigger;
-  actions: WorkflowAction[];
+  triggerNextId: string | null; // أول عقدة بعد المحفّز
+  nodes: WorkflowNode[];
   runs: WorkflowRun[];
   createdAt: number;
+  /** @deprecated الحقل القديم actions يُرحَّل إلى nodes عند القراءة */
+  actions?: { kind: 'reply' | 'notify'; text: string }[];
 }
 
 export const WORKFLOWS_STORAGE_KEY = 'sultan_workflows';
+
+export const NODE_KINDS: { value: WorkflowNodeKind; label: string; color: string }[] = [
+  { value: 'reply', label: 'رسالة نصية', color: 'bg-blue-600' },
+  { value: 'image', label: 'إرسال صورة', color: 'bg-violet-500' },
+  { value: 'location', label: 'إرسال موقع', color: 'bg-teal-500' },
+  { value: 'set_agent', label: 'تعيين وكيل', color: 'bg-indigo-500' },
+  { value: 'assign', label: 'إسناد لموظف', color: 'bg-cyan-600' },
+  { value: 'order', label: 'طلب/فاتورة', color: 'bg-emerald-600' },
+  { value: 'wait', label: 'انتظار', color: 'bg-slate-500' },
+  { value: 'if', label: 'شرط (إذا)', color: 'bg-amber-500' },
+  { value: 'goto', label: 'انتقال لعقدة', color: 'bg-rose-500' },
+];
+
+export function nodeKindLabel(kind: WorkflowNodeKind): string {
+  return NODE_KINDS.find((entry) => entry.value === kind)?.label ?? kind;
+}
+
+export function nodeKindColor(kind: WorkflowNodeKind): string {
+  return NODE_KINDS.find((entry) => entry.value === kind)?.color ?? 'bg-slate-500';
+}
+
+// ترحيل أي سير قديم (trigger + actions خطية) إلى نموذج العقد المرصوفة عمودياً
+export function migrateWorkflow(raw: Partial<Workflow> & { actions?: { kind: 'reply' | 'notify'; text: string }[] }): Workflow {
+  if (Array.isArray(raw.nodes)) {
+    return {
+      id: raw.id ?? crypto.randomUUID(),
+      name: raw.name ?? '',
+      enabled: raw.enabled ?? true,
+      trigger: raw.trigger ?? { kind: 'manual' },
+      triggerNextId: raw.triggerNextId ?? null,
+      nodes: raw.nodes,
+      runs: Array.isArray(raw.runs) ? raw.runs : [],
+      createdAt: raw.createdAt ?? Date.now(),
+    };
+  }
+  const actions = Array.isArray(raw.actions) ? raw.actions : [];
+  const nodes: WorkflowNode[] = actions.map((action, index) => ({
+    id: crypto.randomUUID(),
+    kind: 'reply',
+    position: { x: 120, y: 150 + index * 130 },
+    nextId: null,
+    text: action.kind === 'notify' ? `🔔 ${action.text}` : action.text,
+  }));
+  for (let i = 0; i < nodes.length - 1; i++) nodes[i].nextId = nodes[i + 1].id;
+  return {
+    id: raw.id ?? crypto.randomUUID(),
+    name: raw.name ?? '',
+    enabled: raw.enabled ?? true,
+    trigger: raw.trigger ?? { kind: 'manual' },
+    triggerNextId: nodes[0]?.id ?? null,
+    nodes,
+    runs: Array.isArray(raw.runs) ? raw.runs : [],
+    createdAt: raw.createdAt ?? Date.now(),
+  };
+}
 
 // سياق المطابقة: نص الرسالة وهل المحادثة جديدة (أول رسالة من العميل)
 export interface TriggerContext {
@@ -83,40 +191,7 @@ export function triggerLabel(workflow: Workflow): string {
   return 'تشغيل يدوي فقط';
 }
 
-export function actionLabel(action: WorkflowAction): string {
-  return action.kind === 'reply' ? `رد الوكيل: ${action.text}` : `إشعار: ${action.text}`;
-}
-
 // النصوص تدعم متغيرات: {اسم_العميل} يُستبدل باسم العميل الحقيقي عند التنفيذ
 export function renderTemplate(text: string, customerName: string): string {
   return text.replaceAll('{اسم_العميل}', customerName).replaceAll('{العميل}', customerName);
-}
-
-// تنفيذ إجراءات سير العمل عبر خطافات يوفّرها المنفّذ (الوارد أو التشغيل اليدوي أو مجدول cron).
-// الردود تُرسل باسم المحل، والإشعارات رسائل نظام داخلية تظهر في الوارد دون انكشافها للعميل كرد محل.
-export function executeWorkflowActions(
-  workflow: Workflow,
-  customerName: string,
-  hooks: { reply: (text: string) => void; notify: (text: string) => void }
-): { ran: boolean; detail: string } {
-  let replies = 0;
-  let notices = 0;
-  for (const action of workflow.actions) {
-    if (action.kind === 'reply') {
-      hooks.reply(renderTemplate(action.text, customerName));
-      replies++;
-    } else {
-      hooks.notify(renderTemplate(action.text, customerName));
-      notices++;
-    }
-  }
-  const detail =
-    workflow.actions.length === 0
-      ? 'لا إجراءات — أضف إجراءً للسير'
-      : replies > 0 && notices > 0
-        ? `ردّ (${replies}) وأشعار (${notices}) لـ «${customerName}»`
-        : replies > 0
-          ? `ردّ برسالة (${replies}) لـ «${customerName}»`
-          : `إشعار (${notices})`;
-  return { ran: workflow.actions.length > 0, detail };
 }

@@ -1,6 +1,6 @@
 // components/inbox/ChatWindow.tsx — نافذة الدردشة مع العميل: فقاعات الرسائل ومربع الإرسال بثلاثة أوضاع
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Bot, MessagesSquare, Send, Sparkles, User } from 'lucide-react';
+import { Bot, MapPin, MessagesSquare, Send, Sparkles, User } from 'lucide-react';
 import type { Conversation, ConversationMessage } from './types';
 import { formatChatTime } from './types';
 
@@ -85,6 +85,7 @@ export default function ChatWindow({ conversation, agentName, autoReply, busy, o
             <p className="text-sm font-bold text-slate-800 truncate">{conversation.customerName}</p>
             <p className="text-[11px] text-slate-400">
               {autoReply ? `الرد التلقائي من «${agentName}» مفعّل` : 'الرد التلقائي متوقف — الرد اليدوي فقط'}
+              {conversation.assigneeName ? ` · مُسندة إلى ${conversation.assigneeName}` : ''}
             </p>
           </div>
         </div>
@@ -125,15 +126,38 @@ export default function ChatWindow({ conversation, agentName, autoReply, busy, o
                 {isCustomer ? <User className="w-3.5 h-3.5" aria-hidden="true" /> : <Bot className="w-3.5 h-3.5" aria-hidden="true" />}
               </span>
               <div className={`max-w-[75%] ${isCustomer ? 'text-left' : ''}`}>
-                <div
-                  className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                    isCustomer
-                      ? 'bg-emerald-500 text-white rounded-tl-md'
-                      : 'bg-white text-slate-800 border border-slate-200 rounded-tr-md'
-                  }`}
-                >
-                  {message.content}
-                </div>
+                {message.attachment?.kind === 'image' && (
+                  <img
+                    src={message.attachment.url}
+                    alt={message.attachment.url}
+                    className="mb-1 rounded-xl max-h-52 w-full object-cover border border-slate-200 bg-slate-50"
+                    loading="lazy"
+                  />
+                )}
+                {message.attachment?.kind === 'location' && (
+                  <a
+                    href={`https://maps.google.com/?q=${message.attachment.lat},${message.attachment.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`mb-1 flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-medium underline ${
+                      isCustomer ? 'bg-emerald-500 text-white rounded-tl-md' : 'bg-white text-blue-600 border border-slate-200 rounded-tr-md'
+                    }`}
+                  >
+                    <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    {message.attachment.label} — افتح في الخرائط
+                  </a>
+                )}
+                {message.content && (
+                  <div
+                    className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                      isCustomer
+                        ? 'bg-emerald-500 text-white rounded-tl-md'
+                        : 'bg-white text-slate-800 border border-slate-200 rounded-tr-md'
+                    }`}
+                  >
+                    {message.content}
+                  </div>
+                )}
                 <p className={`text-[10px] text-slate-400 mt-1 ${isCustomer ? 'text-left' : ''}`}>
                   {formatChatTime(message.at)}
                   {label ? ` · ${label}` : ''}

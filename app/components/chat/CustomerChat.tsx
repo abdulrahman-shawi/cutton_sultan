@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { AlertCircle, Bot, Send, Store, User } from 'lucide-react';
+import { AlertCircle, Bot, MapPin, Send, Store, User } from 'lucide-react';
 import type { ConversationMessage } from '../inbox/types';
 import { formatChatTime } from '../inbox/types';
 
@@ -231,15 +231,36 @@ export default function CustomerChat() {
                     {mine ? <User className="w-3.5 h-3.5" aria-hidden="true" /> : <Bot className="w-3.5 h-3.5" aria-hidden="true" />}
                   </span>
                   <div className={`max-w-[78%] ${mine ? 'text-left' : ''}`}>
-                    <div
-                      className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                        mine
-                          ? 'bg-emerald-500 text-white rounded-tl-md'
-                          : 'bg-white text-slate-800 border border-slate-200 rounded-tr-md'
-                      }`}
-                    >
-                      {message.content}
-                    </div>
+                    {message.attachment?.kind === 'image' && (
+                      <img
+                        src={message.attachment.url}
+                        alt={message.attachment.url}
+                        className="mb-1 rounded-xl max-h-56 w-full object-cover border border-slate-200 bg-slate-50"
+                        loading="lazy"
+                      />
+                    )}
+                    {message.attachment?.kind === 'location' && (
+                      <a
+                        href={`https://maps.google.com/?q=${message.attachment.lat},${message.attachment.lng}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mb-1 flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-medium text-blue-600 underline bg-white border border-slate-200 rounded-tr-md"
+                      >
+                        <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        {message.attachment.label} — افتح في الخرائط
+                      </a>
+                    )}
+                    {message.content && (
+                      <div
+                        className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                          mine
+                            ? 'bg-emerald-500 text-white rounded-tl-md'
+                            : 'bg-white text-slate-800 border border-slate-200 rounded-tr-md'
+                        }`}
+                      >
+                        {message.content}
+                      </div>
+                    )}
                     <p className="text-[10px] text-slate-400 mt-1">{formatChatTime(message.at)}</p>
                   </div>
                 </div>

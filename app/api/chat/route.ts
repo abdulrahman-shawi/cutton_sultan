@@ -6,7 +6,8 @@ import { NextResponse } from 'next/server';
 import { prisma, withDbRetry } from '../../lib/server/store';
 import { readCollection, readSingleton, upsertRecord } from '../../lib/server/entities';
 import { buildAgentSystemPrompt, buildCatalogDigestFromProducts, buildCustomerContextFromData } from '../../lib/agentPrompt';
-import { executeWorkflowActions, workflowMatchesMessage, type Workflow } from '../../components/workflows/types';
+import { migrateWorkflow, workflowMatchesMessage, type Workflow } from '../../components/workflows/types';
+import { runWorkflowGraph } from '../../components/workflows/engine';
 import { createAgent, type AgentConfig } from '../../components/agents/types';
 import type { Product } from '../../components/products/types';
 import type { Customer } from '../../components/customers/types';
@@ -41,19 +42,26 @@ function clientIp(request: Request): string {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
 }
 
-// الوكيل الافتراضي الذي يخدم صفحة العملاء — من قائمة الوكلاء المزامنة، مع ترحيل الإعداد القديم المفرد
-async function loadDefaultAgent(): Promise<AgentConfig> {
+// قائمة الوكلاء من الخادم مع ترحيل الإعداد القديم — والوكيل الافتراضي (أو المخصص للمحادثة)
+async function loadAgentsServer(): Promise<AgentConfig[]> {
   const agents = ((await readCollection('sultan_agents')) ?? []) as AgentConfig[];
-  if (agents.length > 0) {
-    const withSkills = agents.map((agent) => ({
-      ...createAgent(),
-      ...agent,
-      skills: agent.skills && typeof agent.skills.orders === 'boolean' ? agent.skills : { orders: true },
-    }));
-    return withSkills.find((agent) => agent.isDefault && agent.autoReply) ?? withSkills.find((agent) => agent.autoReply) ?? withSkills[0];
-  }
+  const withSkills = agents.map((agent) => ({
+    ...createAgent(),
+    ...agent,
+    skills: agent.skills && typeof agent.skills.orders === 'boolean' ? agent.skills : { orders: true },
+  }));
+  if (withSkills.length > 0) return withSkills;
   const legacy = (await readSingleton('sultan_store_settings')) as { agentConfig?: Partial<AgentConfig> } | null;
-  return createAgent({ ...(legacy?.agentConfig ?? {}), isDefault: true });
+  return [createAgent({ ...(legacy?.agentConfig ?? {}), isDefault: true })];
+}
+
+async function pickAgent(conversation: Conversation): Promise<AgentConfig> {
+  const agents = await loadAgentsServer();
+  if (conversation.agentId) {
+    const assigned = agents.find((agent) => agent.id === conversation.agentId && agent.autoReply);
+    if (assigned) return assigned;
+  }
+  return agents.find((agent) => agent.isDefault && agent.autoReply) ?? agents.find((agent) => agent.autoReply) ?? agents[0];
 }
 
 // قراءة محادثة مخزنة على الخادم — سجل واحد لكل محادثة في جدول Conversation بعمود JSONB
@@ -307,23 +315,29 @@ async function runAgent(
   return { text: 'تعذر إكمال الطلب الآن — اطلب من العميل إعادة صياغة طلبه من فضلك.', notes };
 }
 
-// تطبيق سيرات العمل المفعّلة المطابقة لرسالة العميل لحظة وصولها (كلمة مفتاحية أو عميل جديد)
+// تطبيق سيرات العمل المفعّلة المطابقة لرسالة العميل لحظة وصولها عبر محرك العقد نفسه
 async function applyWorkflows(conversation: Conversation, text: string, isNewConversation: boolean): Promise<number> {
-  const workflows = (((await readCollection('sultan_workflows')) ?? []) as Workflow[]).filter((workflow) =>
-    workflowMatchesMessage(workflow, { text, isNewConversation })
-  );
+  const workflows = (((await readCollection('sultan_workflows')) ?? []) as Workflow[])
+    .map((workflow) => migrateWorkflow(workflow))
+    .filter((workflow) => workflowMatchesMessage(workflow, { text, isNewConversation }));
   let replies = 0;
   for (const workflow of workflows) {
-    let replyCount = 0;
-    executeWorkflowActions(workflow, conversation.customerName, {
-      reply: (replyText) => {
-        conversation.messages.push(message(`📌 ${replyText}`, 'shop', 'workflow'));
-        replyCount++;
-      },
-      notify: (note) => conversation.messages.push(message(`🔔 ${note}`, 'system', 'workflow')),
+    const result = await runWorkflowGraph(workflow, conversation, workflow.triggerNextId, {
+      createOrder: async (node, customer) =>
+        (
+          await executeCreateInvoice({
+            customerName: customer,
+            items: node.items ?? [],
+            paid: node.paid === true,
+            notes: `سير عمل «${workflow.name}»`,
+          })
+        ).message,
     });
-    replies += replyCount;
-    const runs = [{ at: Date.now(), detail: `محادثة ${conversation.customerName}` }, ...workflow.runs].slice(0, 20);
+    replies += result.replies;
+    const runs = [
+      { at: Date.now(), detail: `محادثة ${conversation.customerName} — ${result.steps} عقدة` },
+      ...workflow.runs,
+    ].slice(0, 20);
     await upsertRecord('sultan_workflows', { ...workflow, runs } as unknown as Record<string, unknown>);
   }
   return replies;
@@ -357,8 +371,6 @@ export async function POST(request: Request) {
   if (!customerName) return NextResponse.json({ error: 'اسم العميل مطلوب' }, { status: 400 });
   if (!text) return NextResponse.json({ error: 'الرسالة فارغة' }, { status: 400 });
 
-  const agent = await loadDefaultAgent();
-
   // محادثة قائمة أو جديدة
   let conversation = conversationId ? await readConversation(conversationId) : null;
   const isNew = !conversation;
@@ -373,6 +385,9 @@ export async function POST(request: Request) {
     };
   }
   conversation.messages.push(message(text, 'customer', 'manual'));
+
+  // الوكيل: المخصص للمحادثة (عقدة تعيين وكيل) أو الافتراضي
+  const agent = await pickAgent(conversation);
 
   // رسالة ترحيب عند أول رسالة من العميل في محادثة جديدة
   if (isNew && agent.autoReply && agent.openingMessage.trim()) {

@@ -12,10 +12,11 @@ import { CUSTOMERS_STORAGE_KEY } from '../customers/types';
 import type { AgentConfig } from '../agents/types';
 import {
   WORKFLOWS_STORAGE_KEY,
-  executeWorkflowActions,
+  migrateWorkflow,
   workflowMatchesMessage,
   type Workflow,
 } from '../workflows/types';
+import { runWorkflowGraph } from '../workflows/engine';
 import { callAiChat } from '../../lib/aiClient';
 import { buildAgentSystemPromptLocal, loadAgents, loadDefaultAgent } from '../../lib/agentClient';
 import { syncFromServer } from '../../lib/data';
@@ -53,7 +54,7 @@ function loadWorkflows(): Workflow[] {
     const raw = window.localStorage.getItem(WORKFLOWS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as Workflow[]) : [];
+    return Array.isArray(parsed) ? (parsed as Partial<Workflow>[]).map((workflow) => migrateWorkflow(workflow)) : [];
   } catch {
     return [];
   }
@@ -73,6 +74,7 @@ function toChatMessages(conversation: Conversation): ChatMessage[] {
 export default function InboxManager() {
   const [conversations, setConversations] = useState<Conversation[]>(loadConversations);
   const [customers] = useState<Customer[]>(loadCustomers);
+  const [agents] = useState<AgentConfig[]>(loadAgents);
   const [agent] = useState<AgentConfig>(() => loadDefaultAgent(loadAgents()));
   const [workflows, setWorkflows] = useState<Workflow[]>(loadWorkflows);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -145,8 +147,12 @@ export default function InboxManager() {
     }));
   };
 
+  // وكيل المحادثة: المخصص لها بعقدة «تعيين وكيل» إن وُجد، وإلا الافتراضي
+  const agentFor = (conversation: Conversation): AgentConfig =>
+    (conversation.agentId ? agents.find((item) => item.id === conversation.agentId) ?? agent : agent);
+
   const generateAgentReply = async (conversation: Conversation, extraUserMessage?: string): Promise<string> => {
-    const system = buildAgentSystemPromptLocal(agent, conversation.customerName);
+    const system = buildAgentSystemPromptLocal(agentFor(conversation), conversation.customerName);
     const history = toChatMessages(conversation);
     if (extraUserMessage) history.push({ role: 'user', content: extraUserMessage });
     return callAiChat(history, { system, tools: false });
@@ -164,19 +170,16 @@ export default function InboxManager() {
   };
 
   const handleCustomerMessage = async (conversation: Conversation, text: string) => {
-    // 1) سير العمل المطابقة لها أولوية الرد المحدد
+    // 1) سير العمل المطابقة لها أولوية الرد المحدد — عبر محرك العقد نفسه
     const matched = workflows.find((workflow) => workflowMatchesMessage(workflow, { text, isNewConversation: false }));
     if (matched) {
-      let replyCount = 0;
-      const outcome = executeWorkflowActions(matched, conversation.customerName, {
-        reply: (replyText) => {
-          pushMessage(conversation.id, { sender: 'shop', via: 'workflow', content: replyText });
-          replyCount++;
-        },
-        notify: (note) => setNotice(`سير العمل «${matched.name}»: ${note}`),
+      const draft: Conversation = { ...conversation, messages: [...conversation.messages] };
+      const result = await runWorkflowGraph(matched, draft, matched.triggerNextId, {
+        createOrder: async (_node, customer) => `🧾 طلب للعميل «${customer}» — يُنشأ فعلياً على خادم المتجر`,
       });
-      logWorkflowRun(matched.id, outcome.detail);
-      if (replyCount > 0) return;
+      patchConversation(conversation.id, () => ({ ...draft, updatedAt: Date.now() }));
+      logWorkflowRun(matched.id, `${result.steps} عقدة (${result.status === 'waiting' ? 'توقف عند انتظار' : 'اكتمل'})`);
+      if (result.replies > 0) return;
     }
     // 2) وإلا يولّد الوكيل رداً عاماً إن كان مفعّلاً
     if (!agent.autoReply) return;
@@ -221,7 +224,7 @@ export default function InboxManager() {
     if (!active) return null;
     setError(null);
     try {
-      const system = buildAgentSystemPromptLocal(agent, active.customerName);
+      const system = buildAgentSystemPromptLocal(agentFor(active), active.customerName);
       const history = toChatMessages(active);
       history.push({
         role: 'user',
