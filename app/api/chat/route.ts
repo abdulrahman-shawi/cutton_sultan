@@ -343,13 +343,27 @@ async function applyWorkflows(conversation: Conversation, text: string, isNewCon
   return replies;
 }
 
+// اسم المتجر من الإعدادات المزامنة — يظهر في ترويسة صفحة العميل الثابتة
+async function loadStoreName(): Promise<string> {
+  const settings = (await readSingleton('sultan_store_settings')) as { storeName?: string } | null;
+  return settings?.storeName?.trim() || 'متجر قطن سلطان';
+}
+
 // GET /api/chat?id=... — استرجاع محادثة العميل لمتابعتها من جهازه (معرّف غير قابل للتخمين)
+// GET /api/chat (بدون id) — إعدادات الواجهة العامة: اسم المتجر واسم الوكيل الافتراضي
 export async function GET(request: Request) {
   const id = new URL(request.url).searchParams.get('id') ?? '';
-  if (!id) return NextResponse.json({ error: 'معرّف المحادثة مطلوب' }, { status: 400 });
+  const storeName = await loadStoreName();
+  if (!id) {
+    const agents = await loadAgentsServer();
+    const defaultAgent =
+      agents.find((agent) => agent.isDefault && agent.autoReply) ?? agents.find((agent) => agent.autoReply) ?? agents[0];
+    return NextResponse.json({ storeName, agentName: defaultAgent?.name ?? 'مساعد المتجر' });
+  }
   const conversation = await readConversation(id);
   if (!conversation) return NextResponse.json({ error: 'المحادثة غير موجودة' }, { status: 404 });
-  return NextResponse.json({ conversation });
+  const agent = await pickAgent(conversation);
+  return NextResponse.json({ conversation, agentName: agent.name, storeName });
 }
 
 // POST /api/chat — { customerName, message, conversationId? } ← { reply, conversationId, agentName, messages }
@@ -427,6 +441,7 @@ export async function POST(request: Request) {
     reply,
     conversationId: conversation.id,
     agentName: agent.name,
+    storeName: await loadStoreName(),
     messages: conversation.messages.slice(-50),
   });
 }

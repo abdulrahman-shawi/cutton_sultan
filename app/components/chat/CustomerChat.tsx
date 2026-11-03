@@ -33,12 +33,28 @@ function saveGuest(session: GuestSession) {
   }
 }
 
-async function fetchConversation(id: string): Promise<ConversationMessage[] | null> {
+interface ChatPayload {
+  conversation?: { messages?: ConversationMessage[] };
+  storeName?: string;
+  agentName?: string;
+}
+
+async function fetchConversation(id: string): Promise<ChatPayload | null> {
   try {
     const response = await fetch(`/api/chat?id=${encodeURIComponent(id)}`, { cache: 'no-store' });
     if (!response.ok) return null;
-    const data = (await response.json()) as { conversation?: { messages?: ConversationMessage[] } };
-    return data.conversation?.messages ?? null;
+    return (await response.json()) as ChatPayload;
+  } catch {
+    return null;
+  }
+}
+
+// إعدادات الواجهة العامة: اسم المتجر من إعداداته واسم الوكيل الافتراضي — ترويسة ثابتة بمحتوى ديناميكي
+async function fetchChatConfig(): Promise<ChatPayload | null> {
+  try {
+    const response = await fetch('/api/chat', { cache: 'no-store' });
+    if (!response.ok) return null;
+    return (await response.json()) as ChatPayload;
   } catch {
     return null;
   }
@@ -52,6 +68,7 @@ export default function CustomerChat() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [storeName, setStoreName] = useState('متجر قطن سلطان');
   const [agentName, setAgentName] = useState('مساعد المتجر');
   const startedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -62,14 +79,22 @@ export default function CustomerChat() {
     setGuest(session);
     setNameInput(session?.name ?? '');
     if (!session?.conversationId) setLoading(false);
+    // اسم المتجر والوكيل الحقيقيان من الخادم — يظهران في الترويسة الثابتة
+    void fetchChatConfig().then((config) => {
+      if (!config) return;
+      if (config.storeName) setStoreName(config.storeName);
+      if (config.agentName) setAgentName(config.agentName);
+    });
   }, []);
 
   // تحميل محادثة سابقة إن وُجدت
   useEffect(() => {
     if (!guest?.conversationId || startedRef.current) return;
     startedRef.current = true;
-    void fetchConversation(guest.conversationId).then((loaded) => {
-      if (loaded) setMessages(loaded);
+    void fetchConversation(guest.conversationId).then((payload) => {
+      if (payload?.conversation?.messages) setMessages(payload.conversation.messages);
+      if (payload?.storeName) setStoreName(payload.storeName);
+      if (payload?.agentName) setAgentName(payload.agentName);
       setLoading(false);
     });
   }, [guest]);
@@ -78,8 +103,12 @@ export default function CustomerChat() {
   useEffect(() => {
     if (!guest?.conversationId) return;
     const timer = setInterval(() => {
-      void fetchConversation(guest.conversationId as string).then((loaded) => {
-        if (loaded) setMessages((prev) => (JSON.stringify(prev) !== JSON.stringify(loaded) ? loaded : prev));
+      void fetchConversation(guest.conversationId as string).then((payload) => {
+        if (!payload?.conversation?.messages) return;
+        setMessages((prev) =>
+          JSON.stringify(prev) !== JSON.stringify(payload.conversation?.messages) ? (payload.conversation?.messages as ConversationMessage[]) : prev
+        );
+        if (payload.agentName) setAgentName(payload.agentName);
       });
     }, 8000);
     return () => clearInterval(timer);
@@ -117,6 +146,7 @@ export default function CustomerChat() {
         messages?: ConversationMessage[];
         conversationId?: string;
         agentName?: string;
+        storeName?: string;
         error?: string;
       } | null;
       if (!response.ok || !data?.messages) {
@@ -132,6 +162,7 @@ export default function CustomerChat() {
         saveGuest(session);
       }
       if (data.agentName) setAgentName(data.agentName);
+      if (data.storeName) setStoreName(data.storeName);
     } catch {
       setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
       setInput(text);
@@ -153,10 +184,10 @@ export default function CustomerChat() {
           <span className="w-16 h-16 rounded-2xl bg-blue-600 text-white grid place-items-center mx-auto mb-4">
             <Store className="w-8 h-8" aria-hidden="true" />
           </span>
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">متجر قطن سلطان</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">{storeName}</h1>
           <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-            مرحباً بك في محادثة المتجر الذكية — اسأل عن الأقمشة والأسعار والتوفر،
-            وسيرد عليك المساعد فوراً.
+            مرحباً بك في محادثة {storeName} الذكية — اسأل عن الأقمشة والأسعار والتوفر،
+            وسيرد عليك {agentName} فوراً.
           </p>
           <label htmlFor="guest-name" className="block text-right text-sm font-medium text-slate-700 mb-1.5">اسمك الكريم</label>
           <input
@@ -184,14 +215,14 @@ export default function CustomerChat() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col items-stretch" dir="rtl">
-      <div className="flex-1 flex flex-col w-full max-w-2xl mx-auto bg-white shadow-xl overflow-hidden min-h-screen">
-        <header className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-white">
+    <div className="h-[100dvh] bg-slate-100 flex flex-col items-stretch overflow-hidden" dir="rtl">
+      <div className="flex-1 min-h-0 flex flex-col w-full max-w-2xl mx-auto bg-white shadow-xl overflow-hidden">
+        <header className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-white shrink-0">
           <span className="w-11 h-11 rounded-2xl bg-blue-600 text-white grid place-items-center shrink-0">
             <Store className="w-5 h-5" aria-hidden="true" />
           </span>
           <div className="flex-1 min-w-0">
-            <h1 className="text-base font-bold text-slate-900 truncate">متجر قطن سلطان</h1>
+            <h1 className="text-base font-bold text-slate-900 truncate">{storeName}</h1>
             <p className="text-xs text-slate-400">{agentName} — يرد فوراً</p>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-600 px-3 py-1 text-[11px] font-medium">
@@ -200,7 +231,7 @@ export default function CustomerChat() {
           </span>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50/60 min-h-[50vh]">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50/60">
           {loading ? (
             <div className="h-full grid place-items-center py-16">
               <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" aria-label="جارٍ التحميل" />
@@ -282,7 +313,7 @@ export default function CustomerChat() {
         </div>
 
         {error && (
-          <div className="px-4 pb-2">
+          <div className="px-4 pb-2 shrink-0">
             <p className="flex items-center gap-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
               {error}
@@ -290,7 +321,7 @@ export default function CustomerChat() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="border-t border-slate-100 px-4 py-3 flex items-center gap-2 bg-white">
+        <form onSubmit={handleSubmit} className="border-t border-slate-100 px-4 py-3 flex items-center gap-2 bg-white shrink-0">
           <input
             type="text"
             value={input}
