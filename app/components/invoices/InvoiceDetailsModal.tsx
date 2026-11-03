@@ -96,6 +96,13 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
             {invoice.totalSyp > 0 && <strong className="text-slate-800">{formatMoney(invoice.totalSyp, 'SYP')}</strong>}
             {invoice.totalUsd > 0 && <strong className="text-slate-800">{formatMoney(invoice.totalUsd, 'USD')}</strong>}
           </div>
+          {(invoice.offerDiscountSyp ?? 0) > 0 || (invoice.offerDiscountUsd ?? 0) > 0 ? (
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <span className="text-slate-500">العرض «{invoice.offerTitle || '—'}»:</span>
+              {(invoice.offerDiscountSyp ?? 0) > 0 && <span className="text-violet-600 font-medium">− {formatMoney(invoice.offerDiscountSyp as number, 'SYP')}</span>}
+              {(invoice.offerDiscountUsd ?? 0) > 0 && <span className="text-violet-600 font-medium">− {formatMoney(invoice.offerDiscountUsd as number, 'USD')}</span>}
+            </div>
+          ) : null}
           {invoice.status === 'مدفوعة جزئياً' && (
             <div className="flex flex-wrap gap-x-6 gap-y-1">
               <span className="text-slate-500">تم دفعه:</span>

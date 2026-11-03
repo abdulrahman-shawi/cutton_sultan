@@ -85,6 +85,13 @@ model Agent {
   updatedAt DateTime @updatedAt
 }
 
+// عروضات المتجر: نسبة مئوية أو مبلغ ثابت، تُطبق على الفواتير ويعرضها الوكيل للعملاء
+model Offer {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 // إعدادات المتجر: سجل واحد (id = "store")
 model StoreSetting {
   id        String   @id

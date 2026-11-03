@@ -5,8 +5,10 @@ import {
   buildAgentSystemPrompt,
   buildCatalogDigestFromProducts,
   buildCustomerContextFromData,
+  buildOffersDigest,
 } from './agentPrompt';
 import { AGENTS_STORAGE_KEY, createAgent, type AgentConfig } from '../components/agents/types';
+import { OFFERS_STORAGE_KEY, type Offer } from '../components/offers/types';
 import type { Product } from '../components/products/types';
 import type { Customer } from '../components/customers/types';
 import type { Invoice } from '../components/invoices/types';
@@ -54,6 +56,7 @@ export function buildAgentSystemPromptLocal(config: AgentConfig, customerName: s
     config,
     customerName,
     buildCatalogDigestFromProducts(products),
-    buildCustomerContextFromData(customerName, customers, invoices)
+    buildCustomerContextFromData(customerName, customers, invoices),
+    buildOffersDigest(loadData<Offer[]>(OFFERS_STORAGE_KEY) ?? [])
   );
 }

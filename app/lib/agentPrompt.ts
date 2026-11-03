@@ -4,6 +4,19 @@ import type { AgentConfig } from '../components/agents/types';
 import type { Product } from '../components/products/types';
 import type { Customer } from '../components/customers/types';
 import type { Invoice } from '../components/invoices/types';
+import type { Offer } from '../components/offers/types';
+
+// عروض المتجر المفعّلة سطراً واحداً لكل عرض — يذكرها الوكيل للعميل عند السؤال عن العروض
+export function buildOffersDigest(offers: Offer[]): string {
+  const active = offers.filter((offer) => offer.active);
+  if (active.length === 0) return '';
+  return active
+    .map((offer) => {
+      const value = offer.discountType === 'percent' ? `خصم ${offer.discountValue}٪` : `خصم ${offer.discountValue} ل.س`;
+      return `- ${offer.title}: ${value}${offer.description ? ` — ${offer.description}` : ''}`;
+    })
+    .join('\n');
+}
 
 // كتالوج مضغوط يُعرض على الوكيل فيردّ على استفسارات العملاء عن المنتجات والأسعار والتوفر.
 // ترتيب ذكي: المنتجات المتوفرة أولاً (حسب مجموع مخزونها) فلا يختفي صنف كامل بسبب قصّ القائمة،
@@ -61,8 +74,7 @@ export function buildCatalogDigestFromProducts(products: Product[], maxProducts 
 }
 
 // سياق العميل: إجمالي مشترياته ومتبقي ذمته من فواتير المقبوضات — ليذكّر الوكيل الرصيد عند الحاجة
-export function buildCustomerContextFromData(customerName: string, customers: Customer[], invoices: Invoice[]): string {
-  if (!customerName.trim()) return '';
+export function buildCustomerContextFromData(customerName: string, customers: Customer[], invoices: Invoice[]): string {  if (!customerName.trim()) return '';
   const customer = customers.find((item) => item.name.trim() === customerName.trim());
   const rows = invoices.filter(
     (invoice) => invoice.type === 'مقبوضات' && invoice.partyName.trim() === customerName.trim()
@@ -91,7 +103,8 @@ export function buildAgentSystemPrompt(
   config: AgentConfig,
   customerName: string,
   catalog: string,
-  customerContext: string
+  customerContext: string,
+  offersDigest = ''
 ): string {
   return [
     `أنت «${config.name}» — ${config.role} في متجر «قطن سلطان» للأقمشة والمنتجات القطنية.`,
@@ -109,6 +122,13 @@ export function buildAgentSystemPrompt(
           '- اجمع البنود أولاً: اسم المنتج كما ورد في القائمة أعلاه حرفياً، والتفصيلة (لون/مقاس) إن اختارها، والكمية — والسعر من القائمة لا من عندك.',
           '- اسأل سؤالاً واحداً عن طريقة الدفع: كاش الآن أم ذمة (آجل)؟ ثم مرّر paid=true للكاش وpaid=false للذمة.',
           '- قبل التنفيذ لخّص للعميل البنود والإجمالي بجملة واحدة. بعد التنفيذ أكّد: رقم الفاتورة، الإجمالي، وحالة الدفع.',
+        ]
+      : []),
+    ...(offersDigest
+      ? [
+          '',
+          '## عروض المتجر الحالية (اذكرها للعميل عند سؤاله عن العروض أو قبل إتمام طلبه):',
+          offersDigest,
         ]
       : []),
     '',

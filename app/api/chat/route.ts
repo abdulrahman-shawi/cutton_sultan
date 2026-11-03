@@ -5,13 +5,14 @@
 import { NextResponse } from 'next/server';
 import { prisma, withDbRetry } from '../../lib/server/store';
 import { readCollection, readSingleton, upsertRecord } from '../../lib/server/entities';
-import { buildAgentSystemPrompt, buildCatalogDigestFromProducts, buildCustomerContextFromData } from '../../lib/agentPrompt';
+import { buildAgentSystemPrompt, buildCatalogDigestFromProducts, buildCustomerContextFromData, buildOffersDigest } from '../../lib/agentPrompt';
 import { migrateWorkflow, workflowMatchesMessage, type Workflow } from '../../components/workflows/types';
 import { runWorkflowGraph } from '../../components/workflows/engine';
 import { createAgent, type AgentConfig } from '../../components/agents/types';
 import type { Product } from '../../components/products/types';
 import type { Customer } from '../../components/customers/types';
 import type { Invoice, InvoiceItem } from '../../components/invoices/types';
+import type { Offer } from '../../components/offers/types';
 import type { ChatMessage } from '../../lib/ai';
 import type { Conversation, ConversationMessage } from '../../components/inbox/types';
 
@@ -275,11 +276,13 @@ async function runAgent(
   const products = ((await readCollection('sultan_products')) ?? []) as Product[];
   const customers = ((await readCollection('sultan_customers')) ?? []) as Customer[];
   const invoices = ((await readCollection('sultan_invoices')) ?? []) as Invoice[];
+  const offers = ((await readCollection('sultan_offers')) ?? []) as Offer[];
   const system = buildAgentSystemPrompt(
     config,
     customerName,
     buildCatalogDigestFromProducts(products),
-    buildCustomerContextFromData(customerName, customers, invoices)
+    buildCustomerContextFromData(customerName, customers, invoices),
+    buildOffersDigest(offers)
   );
   const tools = withOrders ? ORDER_TOOLS : undefined;
 

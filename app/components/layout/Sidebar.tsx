@@ -23,6 +23,7 @@ const navItems = [
   { name: 'محادثات العملاء', href: '/inbox', icon: 'inbox' },
   { name: 'وكيل العملاء', href: '/agents', icon: 'agents' },
   { name: 'سير العمل', href: '/workflows', icon: 'workflows' },
+  { name: 'العروضات', href: '/offers', icon: 'offers' },
   { name: 'المستخدمون', href: '/users', icon: 'users' },
   { name: 'الصلاحيات', href: '/permissions', icon: 'permissions' },
   { name: 'الإعدادات', href: '/settings', icon: 'settings' },
@@ -47,6 +48,7 @@ const icons = {
   inbox: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 9h8M8 12.5h5" /></>,
   agents: <><rect x="4" y="8" width="16" height="12" rx="2" /><path d="M12 8V4M9 4h6" /><path d="M9 13v2M15 13v2" /><path d="M2 13h2M20 13h2" /></>,
   workflows: <><rect x="3" y="3" width="6" height="6" rx="1" /><rect x="15" y="15" width="6" height="6" rx="1" /><path d="M9 6h6a2 2 0 0 1 2 2v7" /><path d="M15 18H9a2 2 0 0 1-2-2v-3" /></>,
+  offers: <><line x1="19" y1="5" x2="5" y2="19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.6-1.4-2.4L7.3 15a8 8 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.6a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.6 1.4 2.4-1.4 1.1a8 8 0 0 1-.1 2Z" /></>,
 };
 

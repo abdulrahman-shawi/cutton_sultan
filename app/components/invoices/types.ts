@@ -62,6 +62,11 @@ export interface Invoice {
   paidUsd: number;
   remainingSyp: number;
   remainingUsd: number;
+  // عرض مُختار عند الإصدار: خصم على مستوى الفاتورة يُطرح من الإجمالي في حساب المدفوع والمتبقي
+  offerId?: string | null;
+  offerTitle?: string;
+  offerDiscountSyp?: number;
+  offerDiscountUsd?: number;
   notes: string;
   createdAt: number;
 }

@@ -8,6 +8,7 @@ import type { Supplier } from '../suppliers/types';
 import type { Product } from '../products/types';
 import type { Subcategory } from '../subcategories/types';
 import { loadDollarRate } from '../settings/types';
+import { computeOfferDiscount, OFFERS_STORAGE_KEY, type Offer } from '../offers/types';
 import InvoiceItemRow from './InvoiceItemRow';
 import {
   INVOICE_TYPES,
@@ -59,6 +60,18 @@ function toItemDrafts(items: InvoiceItem[]): ItemDraft[] {
   }));
 }
 
+function loadOffers(): Offer[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(OFFERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Offer[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function InvoiceModal({ customers, suppliers, products, subcategories, initial, onClose, onSave }: InvoiceModalProps) {
   const isEdit = Boolean(initial);
   const [type, setType] = useState<InvoiceType>(initial?.type ?? 'مقبوضات');
@@ -68,6 +81,8 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
   const [paidSyp, setPaidSyp] = useState(initial ? String(initial.paidSyp) : '');
   const [paidUsd, setPaidUsd] = useState(initial ? String(initial.paidUsd) : '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [offers] = useState<Offer[]>(loadOffers);
+  const [offerId, setOfferId] = useState(initial?.offerId ?? '');
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
@@ -95,8 +110,17 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
   }
   const presentCurrencies = (['SYP', 'USD'] as const).filter((c) => totals[c] > 0);
 
-  const remainingSyp = status === 'مدفوعة' ? 0 : Math.max(totals.SYP - (Number(paidSyp) || 0), 0);
-  const remainingUsd = status === 'مدفوعة' ? 0 : Math.max(totals.USD - (Number(paidUsd) || 0), 0);
+  // خصم العرض على مستوى الفاتورة (للمقبوضات فقط عند الإنشاء) — والصافي الذي تُحسب عليه المدفوعات
+  const selectedOffer = !isEdit && isReceipts ? (offers.find((offer) => offer.id === offerId && offer.active) ?? null) : null;
+  const offerDiscount = computeOfferDiscount(selectedOffer, totals.SYP, totals.USD);
+  const hasOfferDiscount = offerDiscount.syp > 0 || offerDiscount.usd > 0;
+  const netTotals = {
+    SYP: Math.max(totals.SYP - offerDiscount.syp, 0),
+    USD: Math.max(totals.USD - offerDiscount.usd, 0),
+  };
+
+  const remainingSyp = status === 'مدفوعة' ? 0 : Math.max(netTotals.SYP - (Number(paidSyp) || 0), 0);
+  const remainingUsd = status === 'مدفوعة' ? 0 : Math.max(netTotals.USD - (Number(paidUsd) || 0), 0);
 
   // وضع التعديل: الحالة تُشتق دائماً من المدفوع — المتبقي = الإجمالي − المدفوع
   const editPaidSypRaw = totals.SYP === 0 || paidSyp.trim() === '' ? 0 : Number(paidSyp);
@@ -262,18 +286,23 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
       t[item.currency] += Math.max(item.quantity * item.price - item.discount, 0);
     }
 
+    // صافي الفاتورة بعد خصم العرض المختار (المقبوضات فقط)
+    const offer = isReceipts ? (offers.find((entry) => entry.id === offerId && entry.active) ?? null) : null;
+    const offerCut = computeOfferDiscount(offer, t.SYP, t.USD);
+    const net = { SYP: Math.max(t.SYP - offerCut.syp, 0), USD: Math.max(t.USD - offerCut.usd, 0) };
+
     let paidSypValue = 0;
     let paidUsdValue = 0;
     if (status === 'مدفوعة') {
-      paidSypValue = t.SYP;
-      paidUsdValue = t.USD;
+      paidSypValue = net.SYP;
+      paidUsdValue = net.USD;
     } else if (status === 'مدفوعة جزئياً') {
-      paidSypValue = t.SYP === 0 ? 0 : paidSyp.trim() === '' ? NaN : Number(paidSyp);
-      paidUsdValue = t.USD === 0 ? 0 : paidUsd.trim() === '' ? NaN : Number(paidUsd);
-      if (t.SYP > 0 && (Number.isNaN(paidSypValue) || paidSypValue < 0)) return setError('أدخل المبلغ المدفوع بالسوري');
-      if (t.USD > 0 && (Number.isNaN(paidUsdValue) || paidUsdValue < 0)) return setError('أدخل المبلغ المدفوع بالدولار');
-      if (t.SYP > 0 && paidSypValue > t.SYP) return setError('المبلغ المدفوع بالسوري أكبر من إجمالي الفاتورة');
-      if (t.USD > 0 && paidUsdValue > t.USD) return setError('المبلغ المدفوع بالدولار أكبر من إجمالي الفاتورة');
+      paidSypValue = net.SYP === 0 ? 0 : paidSyp.trim() === '' ? NaN : Number(paidSyp);
+      paidUsdValue = net.USD === 0 ? 0 : paidUsd.trim() === '' ? NaN : Number(paidUsd);
+      if (net.SYP > 0 && (Number.isNaN(paidSypValue) || paidSypValue < 0)) return setError('أدخل المبلغ المدفوع بالسوري');
+      if (net.USD > 0 && (Number.isNaN(paidUsdValue) || paidUsdValue < 0)) return setError('أدخل المبلغ المدفوع بالدولار');
+      if (net.SYP > 0 && paidSypValue > net.SYP) return setError('المبلغ المدفوع بالسوري أكبر من صافي الفاتورة بعد الخصم');
+      if (net.USD > 0 && paidUsdValue > net.USD) return setError('المبلغ المدفوع بالدولار أكبر من صافي الفاتورة بعد الخصم');
     }
 
     const party = partyList.find((p) => p.id === partyId);
@@ -287,8 +316,12 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
       totalUsd: t.USD,
       paidSyp: paidSypValue,
       paidUsd: paidUsdValue,
-      remainingSyp: t.SYP - paidSypValue,
-      remainingUsd: t.USD - paidUsdValue,
+      remainingSyp: net.SYP - paidSypValue,
+      remainingUsd: net.USD - paidUsdValue,
+      offerId: offer?.id ?? null,
+      offerTitle: offer?.title ?? undefined,
+      offerDiscountSyp: offerCut.syp,
+      offerDiscountUsd: offerCut.usd,
       notes: notes.trim(),
     });
   };
@@ -419,6 +452,28 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 </select>
               </div>
             )}
+            {!isEdit && isReceipts && offers.filter((offer) => offer.active).length > 0 && (
+              <div>
+                <label htmlFor="invoice-offer" className="block text-sm font-medium text-slate-700 mb-1.5">
+                  عرض على الفاتورة
+                </label>
+                <select
+                  id="invoice-offer"
+                  value={offerId}
+                  onChange={(event) => setOfferId(event.target.value)}
+                  className={`${inputClass} bg-white cursor-pointer`}
+                >
+                  <option value="">بدون عرض</option>
+                  {offers
+                    .filter((offer) => offer.active)
+                    .map((offer) => (
+                      <option key={offer.id} value={offer.id}>
+                        {offer.title} — {offer.discountType === 'percent' ? `${offer.discountValue}٪` : `${offer.discountValue} ل.س`}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {isEdit && initial ? (
@@ -531,6 +586,21 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
               {totals.SYP === 0 && totals.USD === 0 && <span className="text-slate-400">0</span>}
             </div>
 
+            {selectedOffer && hasOfferDiscount && (
+              <>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                  <span className="text-slate-500">خصم العرض «{selectedOffer.title}»:</span>
+                  {offerDiscount.syp > 0 && <strong className="text-violet-600">− {formatMoney(offerDiscount.syp, 'SYP')}</strong>}
+                  {offerDiscount.usd > 0 && <strong className="text-violet-600">− {formatMoney(offerDiscount.usd, 'USD')}</strong>}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm border-t border-slate-200 pt-2">
+                  <span className="text-slate-500">الصافي المستحق:</span>
+                  {netTotals.SYP > 0 && <strong className="text-emerald-700">{formatMoney(netTotals.SYP, 'SYP')}</strong>}
+                  {netTotals.USD > 0 && <strong className="text-emerald-700">{formatMoney(netTotals.USD, 'USD')}</strong>}
+                </div>
+              </>
+            )}
+
             {!isEdit && rateValue > 0 && (totals.SYP > 0 || totals.USD > 0) && (
               <p className="text-xs text-slate-500">
                 <span className="text-slate-400">المعادل بسعر الصرف {formatPrice(rateValue)}: </span>
@@ -553,7 +623,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 {presentCurrencies.includes('SYP') && (
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">
-                      {isEdit ? `المدفوع حتى الآن (ل.س) من أصل ${formatPrice(totals.SYP)}` : `تم دفع (ل.س) من أصل ${formatPrice(totals.SYP)}`}
+                      {isEdit ? `المدفوع حتى الآن (ل.س) من أصل ${formatPrice(totals.SYP)}` : `تم دفع (ل.س) من أصل ${formatPrice(netTotals.SYP)}`}
                     </label>
                     <input
                       type="number"
@@ -570,7 +640,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 {presentCurrencies.includes('USD') && (
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">
-                      {isEdit ? `المدفوع حتى الآن ($) من أصل ${formatPrice(totals.USD)}` : `تم دفع ($) من أصل ${formatPrice(totals.USD)}`}
+                      {isEdit ? `المدفوع حتى الآن ($) من أصل ${formatPrice(totals.USD)}` : `تم دفع ($) من أصل ${formatPrice(netTotals.USD)}`}
                     </label>
                     <input
                       type="number"

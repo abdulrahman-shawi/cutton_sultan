@@ -17,6 +17,7 @@ export type PageKey =
   | 'inbox'
   | 'agents'
   | 'workflows'
+  | 'offers'
   | 'reports'
   | 'users'
   | 'permissions'
@@ -66,6 +67,7 @@ export const APP_PAGES: AppPage[] = [
   { key: 'inbox', label: 'محادثات العملاء', path: '/inbox' },
   { key: 'agents', label: 'وكيل العملاء', path: '/agents' },
   { key: 'workflows', label: 'سير العمل', path: '/workflows' },
+  { key: 'offers', label: 'العروضات', path: '/offers' },
   { key: 'reports', label: 'التقارير المالية', path: '/reports' },
   { key: 'users', label: 'المستخدمون', path: '/users' },
   { key: 'permissions', label: 'الصلاحيات', path: '/permissions' },
@@ -149,7 +151,8 @@ function employeePermissions(): Record<PageKey, PagePermission> {
       page.key === 'suppliers' ||
       page.key === 'daily_journal' ||
       page.key === 'assistant' ||
-      page.key === 'inbox'
+      page.key === 'inbox' ||
+      page.key === 'offers'
     ) {
       permissions[page.key] = { view: true, add: true, edit: true, delete: true };
     }
@@ -179,6 +182,10 @@ export function seedDefaultRoles(): void {
         // منح «محادثات العملاء» لدور الموظف الافتراضي إن أُضيفت حديثاً
         if (role.id === EMPLOYEE_ROLE_ID && !role.permissions.inbox?.view) {
           permissions.inbox = { view: true, add: true, edit: true, delete: true };
+        }
+        // منح «العروضات» لدور الموظف الافتراضي إن أُضيفت حديثاً
+        if (role.id === EMPLOYEE_ROLE_ID && !role.permissions.offers?.view) {
+          permissions.offers = { view: true, add: true, edit: true, delete: true };
         }
         return { ...role, permissions };
       })
