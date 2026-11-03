@@ -1,7 +1,7 @@
 // components/workflows/types.ts — أتمتة سير العمل بنموذج عقد مرسوم (مثل n8n):
 // محفّز (خمسة أنواع) + عقد مرسومة بمواقع قابلة للسحب تتصل ببعضها عبر «التالي» وفروع «إذا»
 export type WorkflowTrigger =
-  | { kind: 'message'; keyword: string } // رسالة واردة تتضمن كلمة مفتاحية
+  | { kind: 'message'; keywords: string[]; matchStart: boolean } // رسالة تتضمن أي كلمة من القائمة — في أي موضع أو في أول الكلام
   | { kind: 'new_customer' } // أول رسالة من عميل في محادثة جديدة
   | { kind: 'no_reply'; minutes: number } // مرّت X دقيقة ولم يردّ المحل على آخر رسالة للعميل
   | { kind: 'inactive'; hours: number } // لم يتحدث العميل منذ X ساعة (انتهاء/برود المحادثة)
@@ -98,6 +98,21 @@ export function nodeKindColor(kind: WorkflowNodeKind): string {
   return NODE_KINDS.find((entry) => entry.value === kind)?.color ?? 'bg-slate-500';
 }
 
+// تطبيع المحفّز: النسخة القديمة بكلمة واحدة (keyword نصية) تُحوَّل إلى قائمة كلمات
+export function normalizeTrigger(trigger: WorkflowTrigger | undefined): WorkflowTrigger {
+  if (!trigger) return { kind: 'manual' };
+  if (trigger.kind === 'message') {
+    const legacy = trigger as unknown as { keyword?: string };
+    const keywords = Array.isArray(trigger.keywords)
+      ? trigger.keywords
+      : typeof legacy.keyword === 'string' && legacy.keyword.trim()
+        ? [legacy.keyword.trim()]
+        : [];
+    return { kind: 'message', keywords, matchStart: trigger.matchStart === true };
+  }
+  return trigger;
+}
+
 // ترحيل أي سير قديم (trigger + actions خطية) إلى نموذج العقد المرصوفة عمودياً
 export function migrateWorkflow(raw: Partial<Workflow> & { actions?: { kind: 'reply' | 'notify'; text: string }[] }): Workflow {
   if (Array.isArray(raw.nodes)) {
@@ -105,7 +120,7 @@ export function migrateWorkflow(raw: Partial<Workflow> & { actions?: { kind: 're
       id: raw.id ?? crypto.randomUUID(),
       name: raw.name ?? '',
       enabled: raw.enabled ?? true,
-      trigger: raw.trigger ?? { kind: 'manual' },
+      trigger: normalizeTrigger(raw.trigger),
       triggerNextId: raw.triggerNextId ?? null,
       nodes: raw.nodes,
       runs: Array.isArray(raw.runs) ? raw.runs : [],
@@ -125,7 +140,7 @@ export function migrateWorkflow(raw: Partial<Workflow> & { actions?: { kind: 're
     id: raw.id ?? crypto.randomUUID(),
     name: raw.name ?? '',
     enabled: raw.enabled ?? true,
-    trigger: raw.trigger ?? { kind: 'manual' },
+    trigger: normalizeTrigger(raw.trigger),
     triggerNextId: nodes[0]?.id ?? null,
     nodes,
     runs: Array.isArray(raw.runs) ? raw.runs : [],
@@ -139,14 +154,16 @@ export interface TriggerContext {
   isNewConversation: boolean;
 }
 
-// هل يُطلق سير العمل لحظة وصول رسالة؟ (كلمة مفتاحية أو عميل جديد) — الزمنية تُفحص من مجدول cron
+// هل يُطلق سير العمل لحظة وصول رسالة؟ (كلمات مفتاحية أو عميل جديد) — الزمنية تُفحص من مجدول cron
 export function workflowMatchesMessage(workflow: Workflow, context: TriggerContext): boolean {
   if (!workflow.enabled) return false;
   if (workflow.trigger.kind === 'new_customer') return context.isNewConversation;
   if (workflow.trigger.kind === 'message') {
-    const keyword = workflow.trigger.keyword.trim().toLowerCase();
-    if (!keyword) return false;
-    return context.text.toLowerCase().includes(keyword);
+    const keywords = workflow.trigger.keywords.map((item) => item.trim().toLowerCase()).filter(Boolean);
+    if (keywords.length === 0) return false;
+    const text = context.text.toLowerCase().trim();
+    const fromStart = workflow.trigger.matchStart;
+    return keywords.some((item) => (fromStart ? text.startsWith(item) : text.includes(item)));
   }
   return false;
 }
@@ -181,9 +198,10 @@ export function conversationMatchesTimeTrigger(
 export function triggerLabel(workflow: Workflow): string {
   const trigger = workflow.trigger;
   if (trigger.kind === 'message') {
-    return trigger.keyword.trim()
-      ? `رسالة تتضمن «${trigger.keyword.trim()}»`
-      : 'رسالة واردة (بدون كلمة محددة)';
+    const words = trigger.keywords.map((item) => item.trim()).filter(Boolean);
+    if (words.length === 0) return 'رسالة واردة (بدون كلمات محددة)';
+    const where = trigger.matchStart ? 'يبدأ بـ' : 'تتضمن';
+    return `رسالة ${where} ${words.slice(0, 3).map((word) => `«${word}»`).join(' أو ')}${words.length > 3 ? ` (+${words.length - 3})` : ''}`;
   }
   if (trigger.kind === 'new_customer') return 'عميل جديد (أول رسالة)';
   if (trigger.kind === 'no_reply') return `عدم ردّ المحل خلال ${trigger.minutes} دقيقة`;

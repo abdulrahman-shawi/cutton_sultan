@@ -111,13 +111,18 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
   const [name, setName] = useState(migrated?.name ?? '');
   const [enabled, setEnabled] = useState(migrated?.enabled ?? true);
   const [triggerKind, setTriggerKind] = useState<TriggerKind>(migrated?.trigger.kind ?? 'message');
-  const [keyword, setKeyword] = useState(migrated?.trigger.kind === 'message' ? migrated.trigger.keyword : '');
+  const [keywords, setKeywords] = useState<string[]>(
+    migrated?.trigger.kind === 'message' ? (migrated.trigger.keywords ?? []) : []
+  );
+  const [keywordDraft, setKeywordDraft] = useState('');
+  const [matchStart, setMatchStart] = useState(migrated?.trigger.kind === 'message' ? migrated.trigger.matchStart === true : false);
   const [minutes, setMinutes] = useState(migrated?.trigger.kind === 'no_reply' ? String(migrated.trigger.minutes) : '30');
   const [hours, setHours] = useState(migrated?.trigger.kind === 'inactive' ? String(migrated.trigger.hours) : '24');
   const [nodes, setNodes] = useState<WorkflowNode[]>(migrated?.nodes ?? []);
   const [triggerNextId, setTriggerNextId] = useState<string | null>(migrated?.triggerNextId ?? null);
   const [selected, setSelected] = useState<string | 'trigger' | null>(nodes[0]?.id ?? 'trigger');
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [portMenuFor, setPortMenuFor] = useState<string | null>(null); // العقدة التي فُتح قائمة أنواع العقد عند مخرجها
   const [error, setError] = useState('');
 
   const agents = useRef(loadAgents()).current;
@@ -145,11 +150,41 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
     setNodes((prev) => prev.map((node) => (node.id === id ? { ...node, ...patch } : node)));
   };
 
-  const addNode = (kind: WorkflowNodeKind) => {
+  const addKeyword = () => {
+    const word = keywordDraft.trim();
+    if (!word) return;
+    setKeywords((prev) => (prev.includes(word) ? prev : [...prev, word]));
+    setKeywordDraft('');
+  };
+
+  const addNode = (kind: WorkflowNodeKind, connectFrom?: string) => {
     setPaletteOpen(false);
-    const maxBottom = nodes.reduce((max, node) => Math.max(max, node.position.y + 130), 40);
-    const node = createNode(kind, { x: 240 + (nodes.length % 3) * 40, y: maxBottom + 40 });
-    setNodes((prev) => [...prev, node]);
+    setPortMenuFor(null);
+    let position = { x: 240 + (nodes.length % 3) * 40, y: 40 };
+    const source = connectFrom ? nodes.find((node) => node.id === connectFrom) : undefined;
+    if (source) {
+      // العقدة الجديدة تُوضع أسفل مصدرها وتُربط به مباشرة
+      position = { x: source.position.x, y: source.position.y + 160 };
+    } else {
+      const maxBottom = nodes.reduce((max, node) => Math.max(max, node.position.y + 130), 40);
+      position = { x: 240 + (nodes.length % 3) * 40, y: maxBottom + 40 };
+    }
+    const node = createNode(kind, position);
+    setNodes((prev) => {
+      let next = [...prev, node];
+      if (connectFrom === 'trigger') {
+        setTriggerNextId(node.id);
+      } else if (connectFrom) {
+        next = next.map((item) =>
+          item.id === connectFrom
+            ? item.kind === 'if'
+              ? { ...item, ifTrueId: node.id }
+              : { ...item, nextId: node.id }
+            : item
+        );
+      }
+      return next;
+    });
     setSelected(node.id);
   };
 
@@ -242,8 +277,9 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
     if (nodes.length === 0) return setError('أضف عقدة واحدة على الأقل من قائمة «+ إضافة عقدة»');
     let trigger: WorkflowTrigger;
     if (triggerKind === 'message') {
-      if (!keyword.trim()) return setError('أدخل الكلمة المفتاحية للمحفّز');
-      trigger = { kind: 'message', keyword: keyword.trim() };
+      const cleaned = keywords.map((item) => item.trim()).filter(Boolean);
+      if (cleaned.length === 0) return setError('أضف كلمة مفتاحية واحدة على الأقل للمحفّز (اكتب الكلمة واضغط Enter)');
+      trigger = { kind: 'message', keywords: cleaned, matchStart };
     } else if (triggerKind === 'new_customer') {
       trigger = { kind: 'new_customer' };
     } else if (triggerKind === 'no_reply') {
@@ -285,6 +321,10 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
     const position = kind === 'trigger' ? { x: 40, y: 40 } : (node?.position ?? { x: 40, y: 40 });
     const Icon = icon;
     const isSelected = selected === id;
+    // نقطة الدخول أعلى العقدة تستقبل وصلة العقدة السابقة
+    const hasInput = kind === 'trigger' ? true : node?.kind !== 'goto';
+    // مخرج + أسفل العقدة: يضيف عقدة جديدة موصولة تلقائياً (للأنواع ذات «التالي»، و«نعم» للشرطية)
+    const hasPort = kind === 'trigger' ? true : node?.kind === 'if' || (node != null && node.kind !== 'goto');
     return (
       <div
         key={id}
@@ -292,6 +332,12 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
         className={`absolute w-[220px] rounded-2xl border-2 bg-white shadow-sm select-none transition-colors ${isSelected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'}`}
         style={{ left: position.x, top: position.y }}
       >
+        {hasInput && (
+          <span
+            title="نقطة الربط — تصل هنا وصلة العقدة السابقة"
+            className="absolute -top-1.5 right-1/2 translate-x-1/2 w-3 h-3 rounded-full bg-slate-400 border-2 border-white shadow z-10 pointer-events-none"
+          />
+        )}
         <div
           className={`flex items-center gap-2 px-3 py-2.5 rounded-t-xl text-white cursor-grab active:cursor-grabbing ${colorClass}`}
           onPointerDown={(event) => startDrag(event, id)}
@@ -320,6 +366,43 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
         >
           <p className={`text-[11px] leading-relaxed line-clamp-2 ${summary ? 'text-slate-500' : 'text-slate-300 italic'}`}>{summary || 'اضغط لتحرير الخصائص...'}</p>
         </button>
+        {hasPort && (
+          <div className="relative">
+            <button
+              type="button"
+              title="إضافة عقدة موصولة هنا"
+              aria-label="إضافة عقدة موصولة"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setPortMenuFor((prev) => (prev === id ? null : id))}
+              className="absolute -bottom-3 right-1/2 translate-x-1/2 w-6 h-6 rounded-full bg-white border-2 border-slate-300 grid place-items-center text-slate-400 hover:border-blue-500 hover:text-blue-600 transition-colors z-10 shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+            {portMenuFor === id && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setPortMenuFor(null)} />
+                <div className="absolute z-30 top-full right-1/2 translate-x-1/2 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 w-52 max-h-72 overflow-y-auto">
+                  {NODE_KINDS.map((entry) => {
+                    const KindIcon = KIND_ICONS[entry.value];
+                    return (
+                      <button
+                        key={entry.value}
+                        type="button"
+                        onClick={() => addNode(entry.value, id)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        <span className={`w-7 h-7 rounded-lg grid place-items-center text-white ${entry.color}`}>
+                          <KindIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                        </span>
+                        {entry.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -438,7 +521,16 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
               </svg>
 
               {/* عقدة المحفّز */}
-              {renderNodeCard('trigger', 'trigger', 'المحفّز', TRIGGER_OPTIONS.find((option) => option.value === triggerKind)?.label ?? '', 'bg-emerald-500', Zap)}
+              {renderNodeCard(
+                'trigger',
+                'trigger',
+                'المحفّز',
+                triggerKind === 'message'
+                  ? `${TRIGGER_OPTIONS[0].label}${matchStart ? ' — أول الكلام' : ''}: ${keywords.length > 0 ? keywords.slice(0, 3).join('، ') : 'بدون كلمات'}`
+                  : (TRIGGER_OPTIONS.find((option) => option.value === triggerKind)?.label ?? ''),
+                'bg-emerald-500',
+                Zap
+              )}
 
               {/* العقد */}
               {nodes.map((node) =>
@@ -502,9 +594,64 @@ export default function WorkflowModal({ initial, onClose, onSave }: WorkflowModa
                   </p>
                 </div>
                 {triggerKind === 'message' && (
-                  <div>
-                    <label htmlFor="prop-keyword" className="block text-xs font-medium text-slate-600 mb-1">الكلمة المفتاحية</label>
-                    <input id="prop-keyword" type="text" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="مثال: سعر" className={inputClass} />
+                  <div className="space-y-3">
+                    <div>
+                      <label htmlFor="prop-keyword" className="block text-xs font-medium text-slate-600 mb-1">
+                        الكلمات المفتاحية — اكتب الكلمة واضغط Enter لتُضاف
+                      </label>
+                      <div className="rounded-lg border border-slate-300 px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                        <div className="flex flex-wrap gap-1.5">
+                          {keywords.map((word) => (
+                            <span key={word} className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 px-2.5 py-1 text-xs font-medium">
+                              {word}
+                              <button
+                                type="button"
+                                onClick={() => setKeywords((prev) => prev.filter((item) => item !== word))}
+                                aria-label={`حذف ${word}`}
+                                className="text-blue-400 hover:text-blue-700 transition-colors"
+                              >
+                                <X className="w-3 h-3" aria-hidden="true" />
+                              </button>
+                            </span>
+                          ))}
+                          <input
+                            id="prop-keyword"
+                            type="text"
+                            value={keywordDraft}
+                            onChange={(event) => setKeywordDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                addKeyword();
+                              } else if (event.key === 'Backspace' && !keywordDraft && keywords.length > 0) {
+                                setKeywords((prev) => prev.slice(0, -1));
+                              }
+                            }}
+                            placeholder={keywords.length === 0 ? 'مثال: سعر' : 'أضف كلمة أخرى...'}
+                            className="flex-1 min-w-[90px] border-0 outline-none px-1 py-1 text-sm placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="block text-xs font-medium text-slate-600 mb-1.5">موضع الكلمة في رسالة العميل</span>
+                      <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+                        <button
+                          type="button"
+                          onClick={() => setMatchStart(false)}
+                          className={`py-2 rounded-lg text-xs font-medium transition-colors ${!matchStart ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          في أي مكان
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMatchStart(true)}
+                          className={`py-2 rounded-lg text-xs font-medium transition-colors ${matchStart ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          أول الكلام
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
                 {triggerKind === 'no_reply' && (
