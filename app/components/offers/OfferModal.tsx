@@ -7,9 +7,6 @@ import type { Product } from '../products/types';
 import type { Subcategory } from '../subcategories/types';
 import {
   buildEntryOptions,
-  optionLabel,
-  optionMatchScore,
-  optionMatches,
   type EntryOption,
 } from '../invoices/types';
 
@@ -46,11 +43,39 @@ function loadSubcategories(): Subcategory[] {
   }
 }
 
+// تجميع تفصيلات المنتج لكل قسم فرعي خياراً واحداً: المنتج بأكثر من قسم يظهر بخيار لكل قسم
+// (دون تفصيلة لون/مقاس) مع مخزون القسم مجمّعاً وسعر أول تفصيلة
+function buildGroupOptions(products: Product[], subcategories: Subcategory[]): EntryOption[] {
+  const groups = new Map<string, EntryOption>();
+  for (const entry of buildEntryOptions(products, subcategories)) {
+    const key = `${entry.productId}|${entry.subcategoryName}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.stock += entry.stock;
+    } else {
+      groups.set(key, { ...entry });
+    }
+  }
+  return Array.from(groups.values());
+}
+
+// بحث بالاسم أو الموديل أو اسم القسم الفرعي
+function groupMatches(option: EntryOption, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const haystack = `${option.productName} ${option.modelNumber} ${option.subcategoryName}`.toLowerCase();
+  return words.every((word) => haystack.includes(word));
+}
+
+function groupLabel(option: EntryOption): string {
+  return `${option.productName} (${option.subcategoryName || 'بدون قسم'})`;
+}
+
 function emptyItem(): OfferItem {
   return { productId: '', productName: '', modelNumber: '', quantity: 1, price: 0, currency: 'SYP' };
 }
 
-// حقل اختيار تفصيلة: بحث بالاسم/الموديل مع قائمة منسدلة بالنتائج — مثل سطر بند الفاتورة
+// حقل اختيار (منتج × قسم فرعي): بحث بالاسم/الموديل/القسم مع قائمة منسدلة بالنتائج
 function EntryPicker({
   options,
   item,
@@ -62,18 +87,13 @@ function EntryPicker({
   onSelect: (option: EntryOption) => void;
   onClear: () => void;
 }) {
-  const [query, setQuery] = useState(
-    item.productName ? optionLabel({ barcode: '', productId: item.productId, productName: item.productName, modelNumber: item.modelNumber, subcategoryName: item.subcategoryName ?? '', color: '', size: '', currency: 'SYP', retailPrice: 0, wholesalePrice: 0, stock: 0 }) : ''
-  );
+  const [query, setQuery] = useState(item.productName ? `${item.productName}${item.subcategoryName ? ` (${item.subcategoryName})` : ''}` : '');
   const [open, setOpen] = useState(false);
 
   const matches = useMemo(() => {
-    const text = query.trim().toLowerCase();
+    const text = query.trim();
     if (!text) return [];
-    return options
-      .filter((option) => optionMatches(option, query))
-      .sort((a, b) => optionMatchScore(a, query) - optionMatchScore(b, query))
-      .slice(0, 8);
+    return options.filter((option) => groupMatches(option, text)).slice(0, 8);
   }, [options, query]);
 
   return (
@@ -89,32 +109,33 @@ function EntryPicker({
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="ابحث بالاسم أو رقم الموديل..."
+        placeholder="ابحث بالاسم أو الموديل أو القسم..."
         className={`${inputClass} pr-9`}
       />
       {open && matches.length > 0 && (
         <ul className="absolute z-20 top-full right-0 left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
           {matches.map((option) => (
-            <li key={option.barcode}>
+            <li key={`${option.productId}-${option.subcategoryName}`}>
               <button
                 type="button"
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  setQuery(optionLabel(option));
+                  setQuery(groupLabel(option));
                   setOpen(false);
                   onSelect(option);
                 }}
                 className="w-full text-right px-3.5 py-2.5 hover:bg-blue-50 transition-colors"
               >
-                <p className="text-sm font-medium text-slate-800 truncate">{optionLabel(option)}</p>
+                <p className="text-sm font-medium text-slate-800 truncate">
+                  {option.productName}
+                  {option.modelNumber ? ` — موديل ${option.modelNumber}` : ''}
+                </p>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                  {option.subcategoryName && (
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-600">{option.subcategoryName}</span>
-                  )}
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-600">{option.subcategoryName || 'بدون قسم'}</span>
                   <span dir="ltr" className="font-bold text-emerald-600">
                     {option.retailPrice} {option.currency === 'USD' ? '$' : 'ل.س'}
                   </span>
-                  <span className="text-slate-400">المخزون: {option.stock}</span>
+                  <span className="text-slate-400">مخزون القسم: {option.stock}</span>
                 </div>
               </button>
             </li>
@@ -135,8 +156,8 @@ export default function OfferModal({ initial, onClose, onSave }: OfferModalProps
   const [error, setError] = useState('');
   const products = useRef(loadProducts()).current;
   const subcategories = useRef(loadSubcategories()).current;
-  // كل تفصيلة (منتج × قسم فرعي × لون/مقاس) خيار مستقل في البحث
-  const entryOptions = useMemo(() => buildEntryOptions(products, subcategories), [products, subcategories]);
+  // خيار واحد لكل (منتج × قسم فرعي) — المنتج بعدة أقسام يظهر بخيار لكل قسم
+  const entryOptions = useMemo(() => buildGroupOptions(products, subcategories), [products, subcategories]);
 
   const updateItem = (index: number, patch: Partial<OfferItem>) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -237,13 +258,12 @@ export default function OfferModal({ initial, onClose, onSave }: OfferModalProps
                             productName: option.productName,
                             modelNumber: option.modelNumber,
                             subcategoryName: option.subcategoryName,
-                            variant: [option.color, option.size].filter(Boolean).join(' / '),
                             price: option.retailPrice,
                             currency: option.currency,
                           })
                         }
                         onClear={() =>
-                          updateItem(index, { productId: '', productName: '', modelNumber: '', subcategoryName: '', variant: '' })
+                          updateItem(index, { productId: '', productName: '', modelNumber: '', subcategoryName: '' })
                         }
                       />
                     </div>
