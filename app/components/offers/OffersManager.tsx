@@ -127,6 +127,20 @@ export default function OffersManager() {
               </div>
               <p className="font-bold text-slate-800 mt-3">{offer.title}</p>
               {offer.description && <p className="text-xs text-slate-400 mt-1 leading-relaxed line-clamp-2">{offer.description}</p>}
+              {offer.items && offer.items.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {offer.items.slice(0, 4).map((item, index) => (
+                    <li key={index} className="text-[11px] text-slate-500">
+                      <span className="font-medium text-slate-600">{item.productName}</span>
+                      {item.modelNumber ? <span className="text-slate-400"> — موديل {item.modelNumber}</span> : ''}
+                      <span className="text-slate-400"> × {item.quantity}</span>
+                    </li>
+                  ))}
+                  {offer.items.length > 4 && (
+                    <li className="text-[11px] text-slate-400">+{offer.items.length - 4} منتجات أخرى</li>
+                  )}
+                </ul>
+              )}
               <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-100">
                 <button
                   type="button"

@@ -6,14 +6,18 @@ import type { Customer } from '../components/customers/types';
 import type { Invoice } from '../components/invoices/types';
 import type { Offer } from '../components/offers/types';
 
-// عروض المتجر المفعّلة سطراً واحداً لكل عرض — يذكرها الوكيل للعميل عند السؤال عن العروض
+// عروض المتجر المفعّلة سطراً واحداً لكل عرض مع منتجاته — يذكرها الوكيل للعميل عند السؤال عن العروض
 export function buildOffersDigest(offers: Offer[]): string {
   const active = offers.filter((offer) => offer.active);
   if (active.length === 0) return '';
   return active
     .map((offer) => {
       const value = offer.discountType === 'percent' ? `خصم ${offer.discountValue}٪` : `خصم ${offer.discountValue} ل.س`;
-      return `- ${offer.title}: ${value}${offer.description ? ` — ${offer.description}` : ''}`;
+      const items = (offer.items ?? [])
+        .slice(0, 5)
+        .map((item) => `${item.productName}${item.modelNumber ? ` (موديل ${item.modelNumber})` : ''}×${item.quantity}`)
+        .join(' + ');
+      return `- ${offer.title}: ${value}${items ? ` — يضم: ${items}` : ''}${offer.description ? ` — ${offer.description}` : ''}`;
     })
     .join('\n');
 }

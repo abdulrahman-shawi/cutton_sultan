@@ -18,6 +18,8 @@ export interface InvoiceItem {
   price: number;
   discount: number;
   notes: string;
+  // بند أُضيف عبر عرض مُباع — أساس احتساب خصم العرض
+  offerId?: string | null;
 }
 
 export interface ItemDraft {

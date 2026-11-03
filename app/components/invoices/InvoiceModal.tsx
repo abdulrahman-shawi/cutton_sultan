@@ -110,9 +110,49 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
   }
   const presentCurrencies = (['SYP', 'USD'] as const).filter((c) => totals[c] > 0);
 
-  // خصم العرض على مستوى الفاتورة (للمقبوضات فقط عند الإنشاء) — والصافي الذي تُحسب عليه المدفوعات
+  // مفاتيح بنود العرض المضافة تلقائياً — تُستخدم لحساب أساس الخصم وربط البنود بالعرض عند الحفظ
+  const [offerItemKeys, setOfferItemKeys] = useState<string[]>(() => (initial?.items ?? []).filter((item) => item.offerId).map((item) => item.key));
+
+  // تغيير العرض: تُستبدل بنود العرض السابقة ببنود العرض الجديد تلقائياً
+  const handleOfferChange = (nextOfferId: string) => {
+    const offer = offers.find((entry) => entry.id === nextOfferId && entry.active) ?? null;
+    const offerTitle = offer?.title ?? '';
+    const withoutOld = items.filter((item) => !offerItemKeys.includes(item.key));
+    const drafts: ItemDraft[] = (offer?.items ?? []).map((offerItem) => ({
+      key: crypto.randomUUID(),
+      productId: offerItem.productId || null,
+      entryBarcode: null,
+      name: offerItem.modelNumber ? `${offerItem.productName} (موديل ${offerItem.modelNumber})` : offerItem.productName,
+      query: offerItem.productName,
+      currency: offerItem.currency,
+      quantity: String(offerItem.quantity),
+      price: String(offerItem.price),
+      discount: '',
+      notes: offerTitle ? `ضمن عرض «${offerTitle}»` : '',
+    }));
+    setItems([...withoutOld, ...drafts]);
+    setOfferItemKeys(drafts.map((draft) => draft.key));
+    setOfferId(nextOfferId);
+  };
+
+  // خصم العرض (للمقبوضات فقط عند الإنشاء): أساسه بنود العرض المضافة، أو كامل الفاتورة للعروض القديمة بلا بنود
   const selectedOffer = !isEdit && isReceipts ? (offers.find((offer) => offer.id === offerId && offer.active) ?? null) : null;
-  const offerDiscount = computeOfferDiscount(selectedOffer, totals.SYP, totals.USD);
+  const offerBase = { SYP: 0, USD: 0 };
+  if (selectedOffer) {
+    if ((selectedOffer.items ?? []).length > 0) {
+      for (const item of items) {
+        if (!offerItemKeys.includes(item.key)) continue;
+        const quantity = Number(item.quantity) || 0;
+        const price = Number(item.price) || 0;
+        const discount = item.discount.trim() === '' ? 0 : Number(item.discount) || 0;
+        offerBase[item.currency] += Math.max(quantity * price - discount, 0);
+      }
+    } else {
+      offerBase.SYP = totals.SYP;
+      offerBase.USD = totals.USD;
+    }
+  }
+  const offerDiscount = computeOfferDiscount(selectedOffer, offerBase.SYP, offerBase.USD);
   const hasOfferDiscount = offerDiscount.syp > 0 || offerDiscount.usd > 0;
   const netTotals = {
     SYP: Math.max(totals.SYP - offerDiscount.syp, 0),
@@ -278,6 +318,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
         price,
         discount,
         notes: item.notes.trim(),
+        offerId: offerItemKeys.includes(item.key) ? offerId || null : null,
       });
     }
 
@@ -286,9 +327,22 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
       t[item.currency] += Math.max(item.quantity * item.price - item.discount, 0);
     }
 
-    // صافي الفاتورة بعد خصم العرض المختار (المقبوضات فقط)
+    // خصم العرض: على بنوده المضافة، أو على كامل الفاتورة للعروض القديمة بلا بنود
     const offer = isReceipts ? (offers.find((entry) => entry.id === offerId && entry.active) ?? null) : null;
-    const offerCut = computeOfferDiscount(offer, t.SYP, t.USD);
+    if (offer && (offer.items ?? []).length > 0 && !cleanItems.some((item) => item.offerId === offer.id)) {
+      return setError(`العرض «${offer.title}» بلا بنود في الفاتورة — أعد اختياره لإضافة منتجاته`);
+    }
+    const offerCutBase = { SYP: 0, USD: 0 };
+    if (offer && (offer.items ?? []).length > 0) {
+      for (const item of cleanItems) {
+        if (item.offerId !== offer.id) continue;
+        offerCutBase[item.currency] += Math.max(item.quantity * item.price - item.discount, 0);
+      }
+    } else if (offer) {
+      offerCutBase.SYP = t.SYP;
+      offerCutBase.USD = t.USD;
+    }
+    const offerCut = computeOfferDiscount(offer, offerCutBase.SYP, offerCutBase.USD);
     const net = { SYP: Math.max(t.SYP - offerCut.syp, 0), USD: Math.max(t.USD - offerCut.usd, 0) };
 
     let paidSypValue = 0;
@@ -460,7 +514,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                 <select
                   id="invoice-offer"
                   value={offerId}
-                  onChange={(event) => setOfferId(event.target.value)}
+                  onChange={(event) => handleOfferChange(event.target.value)}
                   className={`${inputClass} bg-white cursor-pointer`}
                 >
                   <option value="">بدون عرض</option>
