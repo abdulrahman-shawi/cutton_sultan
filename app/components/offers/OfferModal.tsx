@@ -1,8 +1,17 @@
-// components/offers/OfferModal.tsx — إنشاء عرض أو تعديله: ربطة منتجات مختارة (اسم + موديل + كمية وسعر) مع خصم
-import { useRef, useState } from 'react';
-import { AlertCircle, Plus, Trash2, X } from 'lucide-react';
+// components/offers/OfferModal.tsx — إنشاء عرض أو تعديله: ربطة تفصيلات مختارة عبر بحث بقائمة منسدلة
+// كل تفصيلة (منتج × قسم فرعي × لون/مقاس) خيار مستقل — فالمنتج المربوط بعدة أقسام يظهر بعدة خيارات
+import { useMemo, useRef, useState } from 'react';
+import { AlertCircle, Plus, Search, Trash2, X } from 'lucide-react';
 import type { Offer, OfferItem } from './types';
 import type { Product } from '../products/types';
+import type { Subcategory } from '../subcategories/types';
+import {
+  buildEntryOptions,
+  optionLabel,
+  optionMatchScore,
+  optionMatches,
+  type EntryOption,
+} from '../invoices/types';
 
 interface OfferModalProps {
   initial: Offer | null; // null = عرض جديد
@@ -25,8 +34,95 @@ function loadProducts(): Product[] {
   }
 }
 
+function loadSubcategories(): Subcategory[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem('sultan_subcategories');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Subcategory[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function emptyItem(): OfferItem {
   return { productId: '', productName: '', modelNumber: '', quantity: 1, price: 0, currency: 'SYP' };
+}
+
+// حقل اختيار تفصيلة: بحث بالاسم/الموديل مع قائمة منسدلة بالنتائج — مثل سطر بند الفاتورة
+function EntryPicker({
+  options,
+  item,
+  onSelect,
+  onClear,
+}: {
+  options: EntryOption[];
+  item: OfferItem;
+  onSelect: (option: EntryOption) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery] = useState(
+    item.productName ? optionLabel({ barcode: '', productId: item.productId, productName: item.productName, modelNumber: item.modelNumber, subcategoryName: item.subcategoryName ?? '', color: '', size: '', currency: 'SYP', retailPrice: 0, wholesalePrice: 0, stock: 0 }) : ''
+  );
+  const [open, setOpen] = useState(false);
+
+  const matches = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    if (!text) return [];
+    return options
+      .filter((option) => optionMatches(option, query))
+      .sort((a, b) => optionMatchScore(a, query) - optionMatchScore(b, query))
+      .slice(0, 8);
+  }, [options, query]);
+
+  return (
+    <div className="relative">
+      <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-300 pointer-events-none" aria-hidden="true" />
+      <input
+        type="text"
+        value={query}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          if (item.productId) onClear();
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="ابحث بالاسم أو رقم الموديل..."
+        className={`${inputClass} pr-9`}
+      />
+      {open && matches.length > 0 && (
+        <ul className="absolute z-20 top-full right-0 left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+          {matches.map((option) => (
+            <li key={option.barcode}>
+              <button
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  setQuery(optionLabel(option));
+                  setOpen(false);
+                  onSelect(option);
+                }}
+                className="w-full text-right px-3.5 py-2.5 hover:bg-blue-50 transition-colors"
+              >
+                <p className="text-sm font-medium text-slate-800 truncate">{optionLabel(option)}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                  {option.subcategoryName && (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-600">{option.subcategoryName}</span>
+                  )}
+                  <span dir="ltr" className="font-bold text-emerald-600">
+                    {option.retailPrice} {option.currency === 'USD' ? '$' : 'ل.س'}
+                  </span>
+                  <span className="text-slate-400">المخزون: {option.stock}</span>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export default function OfferModal({ initial, onClose, onSave }: OfferModalProps) {
@@ -38,25 +134,12 @@ export default function OfferModal({ initial, onClose, onSave }: OfferModalProps
   const [active, setActive] = useState(initial?.active ?? true);
   const [error, setError] = useState('');
   const products = useRef(loadProducts()).current;
+  const subcategories = useRef(loadSubcategories()).current;
+  // كل تفصيلة (منتج × قسم فرعي × لون/مقاس) خيار مستقل في البحث
+  const entryOptions = useMemo(() => buildEntryOptions(products, subcategories), [products, subcategories]);
 
   const updateItem = (index: number, patch: Partial<OfferItem>) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  };
-
-  const selectProduct = (index: number, productId: string) => {
-    const product = products.find((entry) => entry.id === productId);
-    if (!product) {
-      updateItem(index, { productId: '', productName: '', modelNumber: '' });
-      return;
-    }
-    const firstEntry = product.entries[0];
-    updateItem(index, {
-      productId: product.id,
-      productName: product.name,
-      modelNumber: product.modelNumber ?? '',
-      price: firstEntry?.salePrice ?? 0,
-      currency: firstEntry?.currency ?? 'SYP',
-    });
   };
 
   const handleSubmit = () => {
@@ -135,29 +218,40 @@ export default function OfferModal({ initial, onClose, onSave }: OfferModalProps
           <div>
             <span className="block text-sm font-medium text-slate-700 mb-1.5">
               منتجات الربطة <span className="text-red-500">*</span>
-              <span className="text-xs font-normal text-slate-400"> — تظهر باسمها ورقم موديلها في الفاتورة عند بيع العرض</span>
+              <span className="text-xs font-normal text-slate-400">
+                {' '}
+                — ابحث واختر التفصيلة؛ المنتج بأكثر من قسم فرعي يظهر بخيار لكل قسم
+              </span>
             </span>
             <ul className="space-y-2">
               {items.map((item, index) => (
                 <li key={index} className="rounded-xl border border-slate-200 p-2.5 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <select
-                      value={item.productId}
-                      onChange={(event) => selectProduct(index, event.target.value)}
-                      className={`${inputClass} bg-white cursor-pointer text-xs`}
-                    >
-                      <option value="">اختر منتجاً...</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name} — موديل {product.modelNumber || '—'}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="flex items-start gap-1.5">
+                    <div className="flex-1 min-w-0">
+                      <EntryPicker
+                        options={entryOptions}
+                        item={item}
+                        onSelect={(option) =>
+                          updateItem(index, {
+                            productId: option.productId,
+                            productName: option.productName,
+                            modelNumber: option.modelNumber,
+                            subcategoryName: option.subcategoryName,
+                            variant: [option.color, option.size].filter(Boolean).join(' / '),
+                            price: option.retailPrice,
+                            currency: option.currency,
+                          })
+                        }
+                        onClear={() =>
+                          updateItem(index, { productId: '', productName: '', modelNumber: '', subcategoryName: '', variant: '' })
+                        }
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
                       aria-label="حذف المنتج"
-                      className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                      className="p-2 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
                     >
                       <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </button>
@@ -190,8 +284,10 @@ export default function OfferModal({ initial, onClose, onSave }: OfferModalProps
                       <option value="USD">$</option>
                     </select>
                   </div>
-                  {item.modelNumber && (
-                    <p className="text-[10px] text-slate-400">موديل {item.modelNumber}</p>
+                  {(item.subcategoryName || item.modelNumber) && (
+                    <p className="text-[10px] text-slate-400">
+                      {[item.subcategoryName, item.modelNumber ? `موديل ${item.modelNumber}` : ''].filter(Boolean).join(' — ')}
+                    </p>
                   )}
                 </li>
               ))}

@@ -122,13 +122,17 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
       key: crypto.randomUUID(),
       productId: offerItem.productId || null,
       entryBarcode: null,
-      name: offerItem.modelNumber ? `${offerItem.productName} (موديل ${offerItem.modelNumber})` : offerItem.productName,
+      name: [offerItem.productName, offerItem.variant, offerItem.modelNumber ? `موديل ${offerItem.modelNumber}` : '']
+        .filter(Boolean)
+        .join(' — '),
       query: offerItem.productName,
       currency: offerItem.currency,
       quantity: String(offerItem.quantity),
       price: String(offerItem.price),
       discount: '',
-      notes: offerTitle ? `ضمن عرض «${offerTitle}»` : '',
+      notes: [offerTitle ? `ضمن عرض «${offerTitle}»` : '', offerItem.subcategoryName ? `القسم: ${offerItem.subcategoryName}` : '']
+        .filter(Boolean)
+        .join(' — '),
     }));
     setItems([...withoutOld, ...drafts]);
     setOfferItemKeys(drafts.map((draft) => draft.key));

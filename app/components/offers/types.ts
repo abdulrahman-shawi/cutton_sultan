@@ -2,11 +2,13 @@
 // تُضاف بنود العرض تلقائياً إلى الفاتورة عند بيعه
 export type OfferDiscountType = 'percent' | 'fixed';
 
-// صنف داخل العرض: منتج مختار من المخزون مع رقم موديله وكميته وسعره ضمن الربطة
+// صنف داخل العرض: تفصيلة مختارة من المخزون (منتج × قسم فرعي × لون/مقاس) مع رقم الموديل والسعر ضمن الربطة
 export interface OfferItem {
   productId: string;
   productName: string;
   modelNumber: string;
+  subcategoryName?: string;
+  variant?: string; // اللون / المقاس
   quantity: number;
   price: number;
   currency: 'SYP' | 'USD';

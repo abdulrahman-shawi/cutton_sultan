@@ -132,6 +132,8 @@ export default function OffersManager() {
                   {offer.items.slice(0, 4).map((item, index) => (
                     <li key={index} className="text-[11px] text-slate-500">
                       <span className="font-medium text-slate-600">{item.productName}</span>
+                      {item.variant ? <span className="text-slate-400"> — {item.variant}</span> : ''}
+                      {item.subcategoryName ? <span className="text-blue-500"> ({item.subcategoryName})</span> : ''}
                       {item.modelNumber ? <span className="text-slate-400"> — موديل {item.modelNumber}</span> : ''}
                       <span className="text-slate-400"> × {item.quantity}</span>
                     </li>

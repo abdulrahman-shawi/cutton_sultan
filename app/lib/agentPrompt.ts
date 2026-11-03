@@ -15,7 +15,7 @@ export function buildOffersDigest(offers: Offer[]): string {
       const value = offer.discountType === 'percent' ? `خصم ${offer.discountValue}٪` : `خصم ${offer.discountValue} ل.س`;
       const items = (offer.items ?? [])
         .slice(0, 5)
-        .map((item) => `${item.productName}${item.modelNumber ? ` (موديل ${item.modelNumber})` : ''}×${item.quantity}`)
+        .map((item) => `${item.productName}${item.variant ? ` (${item.variant})` : ''}${item.subcategoryName ? ` [${item.subcategoryName}]` : ''}×${item.quantity}`)
         .join(' + ');
       return `- ${offer.title}: ${value}${items ? ` — يضم: ${items}` : ''}${offer.description ? ` — ${offer.description}` : ''}`;
     })
