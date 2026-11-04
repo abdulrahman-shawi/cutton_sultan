@@ -99,6 +99,52 @@ function uniqueColors(product: CatalogProduct): string[] {
   return seen;
 }
 
+function uniqueSizes(product: CatalogProduct): string[] {
+  const seen: string[] = [];
+  for (const entry of product.entries) {
+    const size = entry.size.trim();
+    if (size && !seen.includes(size)) seen.push(size);
+  }
+  return seen;
+}
+
+// ترجمة أسماء الألوان العربية في بيانات المنتجات إلى أكواد لون لعرض دوائر الألوان —
+// المطابقة بالتطابق المضبوط أولاً ثم بالاحتواء، وغير المعروف يُعرض رمادياً مع أول حرف
+const COLOR_SWATCHES: Record<string, string> = {
+  'أبيض': '#ffffff',
+  'أسود': '#26262b',
+  'أحمر': '#e11d48',
+  'أزرق': '#2563eb',
+  'أخضر': '#16a34a',
+  'أصفر': '#eab308',
+  'وردي': '#ec4899',
+  'بنفسجي': '#9333ea',
+  'برتقالي': '#f97316',
+  'بني': '#8b5a2b',
+  'رمادي': '#9ca3af',
+  'بيج': '#d8c49a',
+  'كحلي': '#1f3a93',
+  'نيلي': '#27316b',
+  'تركوازي': '#14b8a6',
+  'ذهبي': '#d4af37',
+  'فضي': '#c9ccd1',
+  'عنابي': '#7f1d2f',
+  'موف': '#b784e8',
+  'سماوي': '#38bdf8',
+  'زيتي': '#6b7f3e',
+  'كريمي': '#f3e9d2',
+};
+
+function colorHex(name: string): string | null {
+  const normalized = name.trim();
+  if (!normalized) return null;
+  if (COLOR_SWATCHES[normalized]) return COLOR_SWATCHES[normalized];
+  for (const key of Object.keys(COLOR_SWATCHES)) {
+    if (normalized.includes(key)) return COLOR_SWATCHES[key];
+  }
+  return null;
+}
+
 function ProductImage({ product, className }: { product: CatalogProduct; className: string }) {
   if (product.imageUrl) {
     return <img src={product.imageUrl} alt={product.name} loading="lazy" className={`${className} object-cover`} />;
@@ -123,6 +169,8 @@ export default function ShopCatalog() {
   const [subcategoryId, setSubcategoryId] = useState('all');
   const [availableOnly, setAvailableOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pickedColor, setPickedColor] = useState('');
+  const [pickedSize, setPickedSize] = useState('');
   const productsSectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -154,6 +202,14 @@ export default function ShopCatalog() {
     return () => {
       document.body.style.overflow = '';
     };
+  }, [selectedId]);
+
+  // عند فتح نافذة منتج: تحديد أول لون ومقاس تلقائياً ليظهر السعر والتوفر فوراً
+  useEffect(() => {
+    const product = selectedId ? (payload?.products.find((item) => item.id === selectedId) ?? null) : null;
+    setPickedColor(product ? (uniqueColors(product)[0] ?? '') : '');
+    setPickedSize(product ? (uniqueSizes(product)[0] ?? '') : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
   const categories = payload?.categories ?? [];
@@ -200,7 +256,19 @@ export default function ShopCatalog() {
 
   const selected = selectedId ? (payload?.products.find((product) => product.id === selectedId) ?? null) : null;
   const selectedCategory = selected ? categories.find((category) => category.id === selected.categoryId) : null;
-  const selectedPrices = selected ? priceLabel(selected) : [];
+  // مشتقات منتقي المتغيرات في نافذة العرض السريع: الألوان والمقاسات الفريدة،
+  // التفصيلات المطابقة للاختيار الحالي، وتوفر اللون/المقاس في أي تفصيلة
+  const modalColors = selected ? uniqueColors(selected) : [];
+  const modalSizes = selected ? uniqueSizes(selected) : [];
+  const variantMatches = selected
+    ? selected.entries.filter(
+        (entry) => entry.color.trim() === pickedColor && entry.size.trim() === pickedSize
+      )
+    : [];
+  const colorHasStock = (color: string) =>
+    Boolean(selected?.entries.some((entry) => entry.color.trim() === color && entry.quantity > 0));
+  const sizeHasStock = (size: string) =>
+    Boolean(selected?.entries.some((entry) => entry.size.trim() === size && entry.quantity > 0));
 
   const categoryName = (id: string) => categories.find((category) => category.id === id)?.name ?? '';
 
@@ -556,11 +624,26 @@ export default function ShopCatalog() {
                         )}
                       </div>
                       {colors.length > 0 && (
-                        <p className="text-[11px] text-slate-400 mt-2 truncate">
-                          {colors.length > 2
-                            ? `${colors.slice(0, 2).join(' · ')} · +${colors.length - 2}`
-                            : colors.join(' · ')}
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-2.5">
+                          {colors.slice(0, 6).map((color) => {
+                            const hex = colorHex(color);
+                            return (
+                              <span
+                                key={color}
+                                title={color}
+                                className="w-4 h-4 rounded-full border border-black/10 grid place-items-center shrink-0"
+                                style={{ background: hex ?? '#e8e9f0' }}
+                              >
+                                {!hex && (
+                                  <span className="text-[8px] font-bold text-slate-500 leading-none">{color.charAt(0)}</span>
+                                )}
+                              </span>
+                            );
+                          })}
+                          {colors.length > 6 && (
+                            <span className="text-[11px] text-slate-400">+{colors.length - 6}</span>
+                          )}
+                        </div>
                       )}
                     </button>
                   </article>
@@ -713,47 +796,111 @@ export default function ShopCatalog() {
                   موديل: {selected.modelNumber}
                 </p>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedPrices.length > 0 ? (
-                    selectedPrices.map((part) => (
-                      <span
-                        key={part}
-                        className="text-lg font-bold px-3 py-1 rounded-lg"
-                        style={{ color: PURPLE_DARK, background: `${PURPLE}14` }}
-                      >
-                        {part}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-sm text-slate-400">السعر عند الطلب</span>
-                  )}
-                </div>
+                {/* الألوان: دوائر ملوّنة باللون الفعلي، مع تظليل المختار وحجب غير المتوفر */}
+                {modalColors.length > 0 && (
+                  <div className="mt-5">
+                    <h3 className="text-sm font-bold text-slate-900 mb-2.5">
+                      اللون
+                      <span className="font-normal text-slate-500"> — {pickedColor}</span>
+                    </h3>
+                    <div className="flex flex-wrap gap-2.5">
+                      {modalColors.map((color) => {
+                        const hex = colorHex(color);
+                        const active = color === pickedColor;
+                        const inStock = colorHasStock(color);
+                        return (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => setPickedColor(color)}
+                            title={color}
+                            aria-label={`لون ${color}${inStock ? '' : ' — غير متوفر'}`}
+                            className={`w-9 h-9 rounded-full grid place-items-center border transition-all ${
+                              inStock ? '' : 'opacity-40'
+                            }`}
+                            style={{
+                              background: hex ?? '#e8e9f0',
+                              borderColor: 'rgba(0,0,0,0.12)',
+                              boxShadow: active ? `0 0 0 2px #fff, 0 0 0 4px ${PURPLE}` : undefined,
+                            }}
+                          >
+                            {!hex && (
+                              <span className="text-[10px] font-bold text-slate-500 leading-none">
+                                {color.charAt(0)}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
+                {/* المقاسات: دوائر/badges، المتوفر منها كامل والمنتهي باهت مشطوب */}
+                {modalSizes.length > 0 && (
+                  <div className="mt-5">
+                    <h3 className="text-sm font-bold text-slate-900 mb-2.5">
+                      المقاس
+                      <span className="font-normal text-slate-500"> — {pickedSize}</span>
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {modalSizes.map((size) => {
+                        const active = size === pickedSize;
+                        const inStock = sizeHasStock(size);
+                        return (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => setPickedSize(size)}
+                            aria-label={`مقاس ${size}${inStock ? '' : ' — غير متوفر'}`}
+                            className={`min-w-[44px] h-10 px-3 rounded-full border text-sm font-semibold transition-all ${
+                              inStock ? '' : 'opacity-40 line-through'
+                            }`}
+                            style={
+                              active
+                                ? { background: PURPLE, borderColor: PURPLE, color: '#fff' }
+                                : { background: '#fff', borderColor: '#d6d8e2', color: '#3c3e55' }
+                            }
+                          >
+                            {size}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* نتيجة الاختيار: سعر التفصيلة المختارة وتوفرها بكل عملتها */}
                 <div className="mt-5 flex-1">
-                  <h3 className="text-sm font-bold text-slate-900 mb-2">
-                    التفصيلات المتوفرة
-                    <span className="font-normal text-slate-400"> ({selected.entries.length})</span>
-                  </h3>
-                  <ul className="divide-y border rounded-xl overflow-hidden bg-white" style={{ borderColor: LINE }}>
-                    {selected.entries.map((entry, index) => (
-                      <li key={index} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                        <div className="min-w-0">
-                          <p className="font-medium text-slate-800">
-                            {[entry.color, entry.size].filter(Boolean).join(' · ') || 'تفصيلة'}
+                  <h3 className="text-sm font-bold text-slate-900 mb-2">السعر والتوفر</h3>
+                  {variantMatches.length > 0 ? (
+                    <ul className="divide-y border rounded-xl overflow-hidden bg-white" style={{ borderColor: LINE }}>
+                      {variantMatches.map((entry, index) => (
+                        <li key={index} className="flex items-center justify-between gap-3 px-4 py-3">
+                          <p className="font-bold text-slate-900 text-base whitespace-nowrap">
+                            {formatPrice(entry.salePrice)}{' '}
+                            <span className="text-xs font-normal text-slate-400">
+                              {entry.currency === 'SYP' ? 'ل.س' : '$'}
+                            </span>
                           </p>
-                          <p className={`text-xs mt-0.5 ${entry.quantity > 0 ? 'text-emerald-600' : 'text-rose-400'}`}>
+                          <p
+                            className={`text-xs font-semibold ${
+                              entry.quantity > 0 ? 'text-emerald-600' : 'text-rose-400'
+                            }`}
+                          >
                             {entry.quantity > 0 ? `متوفر — ${entry.quantity} قطعة` : 'نفدت الكمية'}
                           </p>
-                        </div>
-                        <p className="font-bold text-slate-900 whitespace-nowrap">
-                          {formatPrice(entry.salePrice)}{' '}
-                          <span className="text-xs font-normal text-slate-400">
-                            {entry.currency === 'SYP' ? 'ل.س' : '$'}
-                          </span>
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p
+                      className="text-sm text-slate-400 px-4 py-6 text-center"
+                      style={{ border: `1px dashed ${LINE}` }}
+                    >
+                      اختر لوناً ومقاساً لعرض السعر والتوفر
+                    </p>
+                  )}
                 </div>
 
                 <Link
