@@ -76,18 +76,25 @@ function isProductAvailable(product: CatalogProduct): boolean {
   return product.status === 'متوفر' && productTotalQuantity(product) > 0;
 }
 
-// سعر المنتج: أدنى مفرق لكل عملة — «من» تظهر فقط عند تعدد الأسعار
-function priceLabel(product: CatalogProduct): string[] {
+// سعر المنتج بالليرة السورية فقط: الدولار يُحوّل بسعر الصرف من إعدادات المتجر،
+// فتظهر كل الأسعار بوحدة واحدة (ل.س) — بلا أي عرض بعلامة الدولار
+function priceLabel(product: CatalogProduct, sypRate: number): string[] {
   const available = inStockEntries(product);
-  const parts: string[] = [];
-  for (const currency of ['SYP', 'USD'] as const) {
-    const prices = available.filter((entry) => entry.currency === currency).map((entry) => entry.salePrice);
-    if (prices.length === 0) continue;
-    const min = Math.min(...prices);
-    const hasMultiple = new Set(prices).size > 1;
-    parts.push(`${hasMultiple ? 'من ' : ''}${formatPrice(min)} ${currency === 'SYP' ? 'ل.س' : '$'}`);
-  }
-  return parts;
+  const prices = available
+    .map((entry) => entryPriceInSyp(entry, sypRate))
+    .filter((value): value is number => value !== null);
+  if (prices.length === 0) return [];
+  const min = Math.min(...prices);
+  const hasMultiple = new Set(prices).size > 1;
+  return [`${hasMultiple ? 'من ' : ''}${formatPrice(min)} ل.س`];
+}
+
+// تحويل سعر التفصيلة إلى ليرة سورية: السوري كما هو، والدولار بضربه بسعر الصرف —
+// يعيد null عند تعذر التحويل (دولار بلا سعر صرف معرّف) فتُخفى تلك التفصيلة عن العرض
+function entryPriceInSyp(entry: CatalogEntry, sypRate: number): number | null {
+  if (entry.currency === 'SYP') return entry.salePrice;
+  if (entry.currency === 'USD' && sypRate > 0) return Math.round(entry.salePrice * sypRate);
+  return null;
 }
 
 function uniqueColors(product: CatalogProduct): string[] {
@@ -104,6 +111,16 @@ function uniqueSizes(product: CatalogProduct): string[] {
   for (const entry of product.entries) {
     const size = entry.size.trim();
     if (size && !seen.includes(size)) seen.push(size);
+  }
+  return seen;
+}
+
+// الأقسام الفرعية (الشركات) الفريدة لتفصيلات المنتج — تُختار في النافذة ويتحدد السعر معها
+function uniqueSubcategoryIds(product: CatalogProduct): string[] {
+  const seen: string[] = [];
+  for (const entry of product.entries) {
+    const id = entry.subcategoryId?.trim();
+    if (id && !seen.includes(id)) seen.push(id);
   }
   return seen;
 }
@@ -171,6 +188,7 @@ export default function ShopCatalog() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickedColor, setPickedColor] = useState('');
   const [pickedSize, setPickedSize] = useState('');
+  const [pickedSub, setPickedSub] = useState('');
   const productsSectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -204,9 +222,10 @@ export default function ShopCatalog() {
     };
   }, [selectedId]);
 
-  // عند فتح نافذة منتج: تحديد أول لون ومقاس تلقائياً ليظهر السعر والتوفر فوراً
+  // عند فتح نافذة منتج: تحديد أول قسم فرعي ولون ومقاس تلقائياً فيظهر السعر والتوفر فوراً
   useEffect(() => {
     const product = selectedId ? (payload?.products.find((item) => item.id === selectedId) ?? null) : null;
+    setPickedSub(product ? (uniqueSubcategoryIds(product)[0] ?? '') : '');
     setPickedColor(product ? (uniqueColors(product)[0] ?? '') : '');
     setPickedSize(product ? (uniqueSizes(product)[0] ?? '') : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -256,15 +275,31 @@ export default function ShopCatalog() {
 
   const selected = selectedId ? (payload?.products.find((product) => product.id === selectedId) ?? null) : null;
   const selectedCategory = selected ? categories.find((category) => category.id === selected.categoryId) : null;
-  // مشتقات منتقي المتغيرات في نافذة العرض السريع: الألوان والمقاسات الفريدة،
-  // التفصيلات المطابقة للاختيار الحالي، وتوفر اللون/المقاس في أي تفصيلة
+  // سعر صرف الدولار إلى ليرة من إعدادات المتجر — بلا سعر صرف تُخفى أسعار الدولار عن العرض
+  const sypRate = useMemo(() => {
+    const rate = Number(payload?.dollarRate);
+    return Number.isFinite(rate) && rate > 0 ? rate : 0;
+  }, [payload]);
+  const subcategoryNameOf = (id: string) => payload?.subcategories.find((sub) => sub.id === id)?.name ?? '';
+  // مشتقات منتقي المتغيرات في نافذة العرض السريع: الأقسام الفرعية (الشركات) والألوان والمقاسات الفريدة،
+  // التفصيلات المطابقة للاختيار الحالي، وتوفر القسم/اللون/المقاس في أي تفصيلة
+  const modalSubs = selected ? uniqueSubcategoryIds(selected) : [];
   const modalColors = selected ? uniqueColors(selected) : [];
   const modalSizes = selected ? uniqueSizes(selected) : [];
   const variantMatches = selected
     ? selected.entries.filter(
-        (entry) => entry.color.trim() === pickedColor && entry.size.trim() === pickedSize
+        (entry) =>
+          entry.subcategoryId?.trim() === pickedSub &&
+          entry.color.trim() === pickedColor &&
+          entry.size.trim() === pickedSize
       )
     : [];
+  // صفوف العرض النهائية: سعر ل.س محوّل + الكمية — تُسقط التفصيلات التي يستحيل تحويل سعرها
+  const variantRows = variantMatches
+    .map((entry) => ({ price: entryPriceInSyp(entry, sypRate), quantity: entry.quantity }))
+    .filter((row): row is { price: number; quantity: number } => row.price !== null);
+  const subHasStock = (id: string) =>
+    Boolean(selected?.entries.some((entry) => entry.subcategoryId?.trim() === id && entry.quantity > 0));
   const colorHasStock = (color: string) =>
     Boolean(selected?.entries.some((entry) => entry.color.trim() === color && entry.quantity > 0));
   const sizeHasStock = (size: string) =>
@@ -562,7 +597,7 @@ export default function ShopCatalog() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filteredProducts.map((product) => {
                 const available = isProductAvailable(product);
-                const prices = priceLabel(product);
+                const prices = priceLabel(product, sypRate);
                 const colors = uniqueColors(product);
                 return (
                   <article
@@ -796,6 +831,40 @@ export default function ShopCatalog() {
                   موديل: {selected.modelNumber}
                 </p>
 
+                {/* الأقسام الفرعية (الشركات): تُختار وتتغير الأسعار معها */}
+                {modalSubs.length > 0 && (
+                  <div className="mt-5">
+                    <h3 className="text-sm font-bold text-slate-900 mb-2.5">
+                      القسم
+                      <span className="font-normal text-slate-500"> — {subcategoryNameOf(pickedSub) || '—'}</span>
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {modalSubs.map((subId) => {
+                        const active = subId === pickedSub;
+                        const inStock = subHasStock(subId);
+                        return (
+                          <button
+                            key={subId}
+                            type="button"
+                            onClick={() => setPickedSub(subId)}
+                            aria-label={`قسم ${subcategoryNameOf(subId)}${inStock ? '' : ' — غير متوفر'}`}
+                            className={`px-4 h-10 rounded-full border text-sm font-semibold transition-all ${
+                              inStock ? '' : 'opacity-40 line-through'
+                            }`}
+                            style={
+                              active
+                                ? { background: PURPLE, borderColor: PURPLE, color: '#fff' }
+                                : { background: '#fff', borderColor: '#d6d8e2', color: '#3c3e55' }
+                            }
+                          >
+                            {subcategoryNameOf(subId) || 'قسم'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* الألوان: دوائر ملوّنة باللون الفعلي، مع تظليل المختار وحجب غير المتوفر */}
                 {modalColors.length > 0 && (
                   <div className="mt-5">
@@ -870,25 +939,23 @@ export default function ShopCatalog() {
                   </div>
                 )}
 
-                {/* نتيجة الاختيار: سعر التفصيلة المختارة وتوفرها بكل عملتها */}
+                {/* نتيجة الاختيار: سعر التفصيلة المختارة بالليرة السورية وتوفرها */}
                 <div className="mt-5 flex-1">
                   <h3 className="text-sm font-bold text-slate-900 mb-2">السعر والتوفر</h3>
-                  {variantMatches.length > 0 ? (
+                  {variantRows.length > 0 ? (
                     <ul className="divide-y border rounded-xl overflow-hidden bg-white" style={{ borderColor: LINE }}>
-                      {variantMatches.map((entry, index) => (
+                      {variantRows.map((row, index) => (
                         <li key={index} className="flex items-center justify-between gap-3 px-4 py-3">
                           <p className="font-bold text-slate-900 text-base whitespace-nowrap">
-                            {formatPrice(entry.salePrice)}{' '}
-                            <span className="text-xs font-normal text-slate-400">
-                              {entry.currency === 'SYP' ? 'ل.س' : '$'}
-                            </span>
+                            {formatPrice(row.price)}{' '}
+                            <span className="text-xs font-normal text-slate-400">ل.س</span>
                           </p>
                           <p
                             className={`text-xs font-semibold ${
-                              entry.quantity > 0 ? 'text-emerald-600' : 'text-rose-400'
+                              row.quantity > 0 ? 'text-emerald-600' : 'text-rose-400'
                             }`}
                           >
-                            {entry.quantity > 0 ? `متوفر — ${entry.quantity} قطعة` : 'نفدت الكمية'}
+                            {row.quantity > 0 ? `متوفر — ${row.quantity} قطعة` : 'نفدت الكمية'}
                           </p>
                         </li>
                       ))}
@@ -898,7 +965,7 @@ export default function ShopCatalog() {
                       className="text-sm text-slate-400 px-4 py-6 text-center"
                       style={{ border: `1px dashed ${LINE}` }}
                     >
-                      اختر لوناً ومقاساً لعرض السعر والتوفر
+                      اختر قسماً ولوناً ومقاساً لعرض السعر والتوفر
                     </p>
                   )}
                 </div>
