@@ -115,15 +115,23 @@ export default function ProductList({
                   className={`grid ${gridTemplate} items-center gap-4 px-5 py-4 hover:bg-slate-50/70 transition-colors`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0 ${
-                        product.status === 'متوفر'
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'bg-slate-100 text-slate-400'
-                      }`}
-                    >
-                      {product.name.charAt(0)}
-                    </span>
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl}
+                        alt=""
+                        className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-100 bg-slate-50"
+                      />
+                    ) : (
+                      <span
+                        className={`w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0 ${
+                          product.status === 'متوفر'
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'bg-slate-100 text-slate-400'
+                        }`}
+                      >
+                        {product.name.charAt(0)}
+                      </span>
+                    )}
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-800 truncate">{product.name}</p>
                       <p className="text-xs text-slate-400">

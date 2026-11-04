@@ -99,6 +99,14 @@ model StoreSetting {
   updatedAt DateTime @updatedAt
 }
 
+// طلبات المتجر الإلكتروني: سجل واحد لكل طلب وبياناته الكاملة بعمود JSONB
+// (بنود الطلب وحالة العميل والتوصيل تبقى داخل سجلها — جاهز لسلة الشراء القادمة)
+model Order {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 model AppUser {
   id        String   @id
   data      Json

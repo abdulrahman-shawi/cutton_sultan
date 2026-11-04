@@ -17,6 +17,7 @@ export const ENTITY_MAP: Record<string, { table: keyof PrismaClient; kind: 'coll
   sultan_workflows: { table: 'workflow', kind: 'collection' },
   sultan_agents: { table: 'agent', kind: 'collection' },
   sultan_offers: { table: 'offer', kind: 'collection' },
+  sultan_orders: { table: 'order', kind: 'collection' },
   sultan_store_settings: { table: 'storeSetting', kind: 'singleton' },
   sultan_users: { table: 'appUser', kind: 'collection' },
   sultan_roles: { table: 'appRole', kind: 'collection' },

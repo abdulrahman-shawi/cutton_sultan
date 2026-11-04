@@ -30,6 +30,7 @@ export interface Product {
   modelNumber: string;
   categoryId: string;
   status: ProductStatus;
+  imageUrl?: string;
   entries: ProductEntry[];
 }
 

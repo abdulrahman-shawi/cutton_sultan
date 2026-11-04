@@ -1,6 +1,6 @@
 // components/products/ProductModal.tsx
-import { useState, type FormEvent } from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { AlertCircle, ImagePlus, X } from 'lucide-react';
 import type { Category } from '../categories/types';
 import type { Subcategory } from '../subcategories/types';
 import { loadDollarRate } from '../settings/types';
@@ -12,6 +12,36 @@ import {
   type Product,
   type ProductStatus,
 } from './types';
+
+// ضغط الصور المرفوعة قبل تخزينها: تصغير أقصى بعد وحفظ بصيغة JPEG — تبقى البيانات خفيفة على المزامنة والتخزين المحلي
+const MAX_IMAGE_DIMENSION = 900;
+const MAX_DATA_URL_LENGTH = 400_000;
+
+function fileToResizedDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('تعذر معالجة الصورة في هذا المتصفح'));
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      image.onerror = () => reject(new Error('تعذر قراءة الصورة — جرّب صورة أخرى'));
+      image.src = String(reader.result);
+    };
+    reader.onerror = () => reject(new Error('تعذر قراءة الملف'));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface ProductModalProps {
   mode: 'create' | 'edit';
@@ -41,6 +71,10 @@ export default function ProductModal({
     initial?.categoryId ?? defaultCategoryId ?? categories[0]?.id ?? ''
   );
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? 'متوفر');
+  const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? '');
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<EntryDraft[]>(() =>
     (initial?.entries ?? []).map((entry) => ({
       color: entry.color,
@@ -59,6 +93,29 @@ export default function ProductModal({
   const availableSubcategories = subcategories.filter(
     (subcategory) => subcategory.categoryId === categoryId
   );
+
+  const handleImageFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImageError('');
+    if (!file.type.startsWith('image/')) {
+      setImageError('الملف المختار ليس صورة');
+      return;
+    }
+    setImageBusy(true);
+    try {
+      const dataUrl = await fileToResizedDataUrl(file);
+      if (dataUrl.length > MAX_DATA_URL_LENGTH) {
+        throw new Error('الصورة ما زالت كبيرة بعد الضغط — اختر صورة أصغر حجماً');
+      }
+      setImageUrl(dataUrl);
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : 'تعذر تحميل الصورة');
+    } finally {
+      setImageBusy(false);
+    }
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -108,6 +165,7 @@ export default function ProductModal({
       modelNumber: modelNumber.trim(),
       categoryId,
       status,
+      imageUrl: imageUrl.trim(),
       entries: entries.map((entry) => ({
         color: entry.color.trim(),
         size: entry.size.trim(),
@@ -214,6 +272,66 @@ export default function ProductModal({
                     {option}
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <span className="block text-sm font-medium text-slate-700 mb-1.5">صورة المنتج (اختياري)</span>
+            <div className="flex items-start gap-4">
+              {imageUrl ? (
+                <div className="relative shrink-0">
+                  {/* الصورة تُخزن مضغوطة كبيانات مضمّنة فتنتقل مع المزامنة وتظهر في واجهة المتجر */}
+                  <img
+                    src={imageUrl}
+                    alt="معاينة صورة المنتج"
+                    className="w-24 h-24 rounded-xl object-cover border border-slate-200 bg-slate-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl('')}
+                    aria-label="إزالة الصورة"
+                    className="absolute -top-2 -left-2 p-1 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-red-500 shadow-sm transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-200 grid place-items-center text-slate-300 shrink-0">
+                  <ImagePlus className="w-6 h-6" aria-hidden="true" />
+                </div>
+              )}
+              <div className="flex-1 space-y-2 min-w-0">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageFile}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={imageBusy}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                >
+                  {imageBusy ? 'جارٍ ضغط الصورة…' : imageUrl ? 'تغيير الصورة' : 'رفع صورة من الجهاز'}
+                </button>
+                <input
+                  type="text"
+                  value={imageUrl.startsWith('data:') ? '' : imageUrl}
+                  onChange={(event) => {
+                    setImageUrl(event.target.value);
+                    setImageError('');
+                  }}
+                  placeholder={imageUrl.startsWith('data:') ? 'أو استبدلها برابط صورة (https://…)' : 'أو الصق رابط صورة (https://…)'}
+                  dir="ltr"
+                  className={`${inputClass} text-left`}
+                />
+                <p className="text-xs text-slate-400">
+                  تُضغط الصورة تلقائياً وتُحفظ مع بيانات المنتج، وتظهر في واجهة المتجر الإلكتروني.
+                </p>
+                {imageError && <p className="text-xs text-red-600">{imageError}</p>}
               </div>
             </div>
           </div>

@@ -13,6 +13,7 @@ export const DATA_KEYS = [
   'sultan_workflows',
   'sultan_agents',
   'sultan_offers',
+  'sultan_orders',
   'sultan_store_settings',
   'sultan_users',
   'sultan_roles',
