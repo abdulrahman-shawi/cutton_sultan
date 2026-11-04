@@ -1,4 +1,4 @@
-import ReportsManager from '../../components/reports/ReportsManager';
+import ReportsManager from '../../../components/reports/ReportsManager';
 
 export const metadata = {
   title: 'التقارير المالية | نظام إدارة العملاء',

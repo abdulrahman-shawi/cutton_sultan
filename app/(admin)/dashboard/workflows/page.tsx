@@ -1,4 +1,4 @@
-import WorkflowsManager from '../../components/workflows/WorkflowsManager';
+import WorkflowsManager from '../../../components/workflows/WorkflowsManager';
 
 export const metadata = {
   title: 'سير العمل | نظام إدارة العملاء',

@@ -1,4 +1,4 @@
-import InvoicesManager from '../../components/invoices/InvoicesManager';
+import InvoicesManager from '../../../components/invoices/InvoicesManager';
 
 export const metadata = {
   title: 'الفواتير | نظام إدارة العملاء',

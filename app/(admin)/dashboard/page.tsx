@@ -6,11 +6,11 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import MetricCard from "../components/dashboard/MetricCard";
-import RecentInvoices from "../components/dashboard/RecentInvoices";
-import RevenueChart from "../components/dashboard/RevenueChart";
-import LowStockCard from "../components/dashboard/LowStockCard";
-import DemoDataButton from "../components/demo/DemoDataButton";
+import MetricCard from "../../components/dashboard/MetricCard";
+import RecentInvoices from "../../components/dashboard/RecentInvoices";
+import RevenueChart from "../../components/dashboard/RevenueChart";
+import LowStockCard from "../../components/dashboard/LowStockCard";
+import DemoDataButton from "../../components/demo/DemoDataButton";
 
 const metrics = [
   {
@@ -58,7 +58,7 @@ export default function DashboardPage() {
             مرحباً بك مجدداً، إليك ملخص أداء النظام اليوم.
           </p>
         </div>
-        <Link href="/reports" className="primary-button">
+        <Link href="/dashboard/reports" className="primary-button">
           <span aria-hidden="true">＋</span>
           إنشاء تقرير
         </Link>

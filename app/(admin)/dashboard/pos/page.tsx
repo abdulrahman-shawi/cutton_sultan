@@ -1,4 +1,4 @@
-import PosManager from '../../components/pos/PosManager';
+import PosManager from '../../../components/pos/PosManager';
 
 export const metadata = {
   title: 'نقطة البيع السريعة | نظام إدارة العملاء',

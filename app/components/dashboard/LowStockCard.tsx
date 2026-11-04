@@ -79,7 +79,7 @@ export default function LowStockCard() {
 
       {lowStock.length > 0 && (
         <Link
-          href="/products"
+          href="/dashboard/products"
           className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
         >
           عرض المنتجات

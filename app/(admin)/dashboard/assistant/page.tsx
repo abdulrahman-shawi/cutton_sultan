@@ -1,4 +1,4 @@
-import AssistantManager from '../../components/assistant/AssistantManager';
+import AssistantManager from '../../../components/assistant/AssistantManager';
 
 export const metadata = {
   title: 'المساعد الذكي | نظام إدارة العملاء',

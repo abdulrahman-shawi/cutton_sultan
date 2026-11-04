@@ -1,4 +1,4 @@
-import UsersManager from '../../components/users/UsersManager';
+import UsersManager from '../../../components/users/UsersManager';
 
 export const metadata = {
   title: 'المستخدمون | نظام إدارة العملاء',

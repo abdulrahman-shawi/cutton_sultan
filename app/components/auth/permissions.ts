@@ -51,27 +51,28 @@ export const EMPLOYEE_ROLE_ID = 'role-employee';
 export const AUTH_CHANGED_EVENT = 'sultan-auth-changed';
 
 // الصفحات المتاحة للتحكم — الترتيب نفسه سيظهر في صفحة الصلاحيات والقائمة الجانبية
+// كل الصفحات تخدم من مسار /dashboard/* — الصفحة الجذر تنقل إليه تلقائياً
 export const APP_PAGES: AppPage[] = [
-  { key: 'dashboard', label: 'التحليلات (الداشبورد)', path: '/' },
-  { key: 'departments', label: 'الأقسام', path: '/departments' },
-  { key: 'subcategories', label: 'الأقسام الفرعية', path: '/subcategories' },
-  { key: 'products', label: 'المنتجات', path: '/products' },
-  { key: 'requests', label: 'توصيات العملاء', path: '/requests' },
-  { key: 'invoices', label: 'الفواتير', path: '/invoices' },
-  { key: 'pos', label: 'نقطة البيع السريعة', path: '/pos' },
-  { key: 'returns', label: 'التبديلات والمرتجعات', path: '/returns' },
-  { key: 'customers', label: 'العملاء', path: '/customers' },
-  { key: 'suppliers', label: 'الموردين', path: '/suppliers' },
-  { key: 'daily_journal', label: 'دفتر اليومية', path: '/daily-journal' },
-  { key: 'assistant', label: 'المساعد الذكي', path: '/assistant' },
-  { key: 'inbox', label: 'محادثات العملاء', path: '/inbox' },
-  { key: 'agents', label: 'وكيل العملاء', path: '/agents' },
-  { key: 'workflows', label: 'سير العمل', path: '/workflows' },
-  { key: 'offers', label: 'العروضات', path: '/offers' },
-  { key: 'reports', label: 'التقارير المالية', path: '/reports' },
-  { key: 'users', label: 'المستخدمون', path: '/users' },
-  { key: 'permissions', label: 'الصلاحيات', path: '/permissions' },
-  { key: 'settings', label: 'الإعدادات', path: '/settings' },
+  { key: 'dashboard', label: 'التحليلات (الداشبورد)', path: '/dashboard' },
+  { key: 'departments', label: 'الأقسام', path: '/dashboard/departments' },
+  { key: 'subcategories', label: 'الأقسام الفرعية', path: '/dashboard/subcategories' },
+  { key: 'products', label: 'المنتجات', path: '/dashboard/products' },
+  { key: 'requests', label: 'توصيات العملاء', path: '/dashboard/requests' },
+  { key: 'invoices', label: 'الفواتير', path: '/dashboard/invoices' },
+  { key: 'pos', label: 'نقطة البيع السريعة', path: '/dashboard/pos' },
+  { key: 'returns', label: 'التبديلات والمرتجعات', path: '/dashboard/returns' },
+  { key: 'customers', label: 'العملاء', path: '/dashboard/customers' },
+  { key: 'suppliers', label: 'الموردين', path: '/dashboard/suppliers' },
+  { key: 'daily_journal', label: 'دفتر اليومية', path: '/dashboard/daily-journal' },
+  { key: 'assistant', label: 'المساعد الذكي', path: '/dashboard/assistant' },
+  { key: 'inbox', label: 'محادثات العملاء', path: '/dashboard/inbox' },
+  { key: 'agents', label: 'وكيل العملاء', path: '/dashboard/agents' },
+  { key: 'workflows', label: 'سير العمل', path: '/dashboard/workflows' },
+  { key: 'offers', label: 'العروضات', path: '/dashboard/offers' },
+  { key: 'reports', label: 'التقارير المالية', path: '/dashboard/reports' },
+  { key: 'users', label: 'المستخدمون', path: '/dashboard/users' },
+  { key: 'permissions', label: 'الصلاحيات', path: '/dashboard/permissions' },
+  { key: 'settings', label: 'الإعدادات', path: '/dashboard/settings' },
 ];
 
 export function emptyPermissions(): Record<PageKey, PagePermission> {
@@ -237,9 +238,10 @@ export function canAccessPath(roleId: string | null | undefined, pathname: strin
 }
 
 // أول صفحة مسموح بعرضها للدور — تُستخدم كوجهة افتراضية بعد الدخول وعند الحظر
+// عند دور بلا أي صفحة: صفحة الدخول بدل الجذر (الذي ينقل إلى /dashboard فتنشأ حلقة)
 export function getDefaultPath(roleId: string | null | undefined): string {
   const page = APP_PAGES.find((entry) => canPerform(roleId, entry.key, 'view'));
-  return page?.path ?? '/';
+  return page?.path ?? '/login';
 }
 
 // إشعار المكونات بأن المستخدمين أو الصلاحيات تغيّرت لتتحدث القوائم والحماية فوراً

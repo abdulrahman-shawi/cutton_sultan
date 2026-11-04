@@ -140,7 +140,7 @@ export default function SubcategoriesManager() {
             أضف الأقسام الرئيسية أولاً ثم عُد لإضافة الأقسام الفرعية تحتها.
           </p>
           <Link
-            href="/departments"
+            href="/dashboard/departments"
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
           >
             إدارة الأقسام الرئيسية

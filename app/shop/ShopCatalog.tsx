@@ -1,10 +1,22 @@
-// app/shop/ShopCatalog.tsx — واجهة المتجر الإلكتروني العامة: كتالوج حي يقرأ من الخادم بلا تسجيل دخول،
-// مع بحث وفلاتر أقسام وعرض تفاصيل كل تفصيلة (لون/مقاس/سعر/توفر)، وطلب العميل يتم عبر صفحة المحادثة.
+// app/shop/ShopCatalog.tsx — واجهة المتجر الإلكتروني العامة بنمط قوالب التجارة (على غرار ثيم Molla):
+// ترويسة ببحث بارز، شريط أقسام، بانر ترحيبي، بطاقات أقسام، شبكة منتجات بعرض سريع،
+// صناديق مزايا، شريط تواصل وفوتر متعدد الأعمدة — البيانات حية من /api/shop بلا تسجيل دخول.
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { MessageCircle, PackageSearch, RotateCcw, Search, Store, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChevronLeft,
+  Eye,
+  Layers,
+  MessageCircle,
+  PackageSearch,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Tag,
+  X,
+} from 'lucide-react';
 import { formatPrice } from '../components/products/types';
 
 interface CatalogEntry {
@@ -38,6 +50,19 @@ interface ShopPayload {
 }
 
 const PURPLE = '#7666e8';
+const PURPLE_DARK = '#5b4bd1';
+const PAGE_BG = '#f4f5f8';
+const LINE = '#e9eaf0';
+
+// لوحات متدرجة لبطاقات الأقسام عند غياب صورها
+const CATEGORY_GRADIENTS = [
+  'linear-gradient(135deg,#7666e8,#a08df5)',
+  'linear-gradient(135deg,#e861a0,#f5a18d)',
+  'linear-gradient(135deg,#31a9c1,#7fd6c2)',
+  'linear-gradient(135deg,#e8a23c,#f5d06b)',
+  'linear-gradient(135deg,#5f7ae8,#8fb0f5)',
+  'linear-gradient(135deg,#4caf7d,#9bd6b0)',
+];
 
 function inStockEntries(product: CatalogProduct): CatalogEntry[] {
   return product.entries.filter((entry) => entry.quantity > 0);
@@ -51,7 +76,7 @@ function isProductAvailable(product: CatalogProduct): boolean {
   return product.status === 'متوفر' && productTotalQuantity(product) > 0;
 }
 
-// سطر سعر المنتج: أدنى مفرق لكل عملة على حدة — «من» تظهر فقط عند تعدد الأسعار
+// سعر المنتج: أدنى مفرق لكل عملة — «من» تظهر فقط عند تعدد الأسعار
 function priceLabel(product: CatalogProduct): string[] {
   const available = inStockEntries(product);
   const parts: string[] = [];
@@ -60,8 +85,7 @@ function priceLabel(product: CatalogProduct): string[] {
     if (prices.length === 0) continue;
     const min = Math.min(...prices);
     const hasMultiple = new Set(prices).size > 1;
-    const formatted = `${hasMultiple ? 'من ' : ''}${formatPrice(min)} ${currency === 'SYP' ? 'ل.س' : '$'}`;
-    parts.push(formatted);
+    parts.push(`${hasMultiple ? 'من ' : ''}${formatPrice(min)} ${currency === 'SYP' ? 'ل.س' : '$'}`);
   }
   return parts;
 }
@@ -82,9 +106,9 @@ function ProductImage({ product, className }: { product: CatalogProduct; classNa
   return (
     <div
       className={`${className} grid place-items-center text-white`}
-      style={{ background: `linear-gradient(135deg, ${PURPLE}, #a08df5)` }}
+      style={{ background: `linear-gradient(135deg, ${PURPLE} 0%, #b7a9f7 100%)` }}
     >
-      <span className="text-4xl font-bold opacity-90">{product.name.charAt(0)}</span>
+      <span className="text-5xl font-bold opacity-90">{product.name.charAt(0)}</span>
     </div>
   );
 }
@@ -97,8 +121,9 @@ export default function ShopCatalog() {
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('all');
   const [subcategoryId, setSubcategoryId] = useState('all');
-  const [availableOnly, setAvailableOnly] = useState(true);
+  const [availableOnly, setAvailableOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const productsSectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,13 +148,23 @@ export default function ShopCatalog() {
     };
   }, [retryCount]);
 
-  // قفل تمرير الصفحة عند فتح نافذة التفاصيل
+  // قفل تمرير الصفحة عند فتح نافذة العرض السريع
   useEffect(() => {
     document.body.style.overflow = selectedId ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
   }, [selectedId]);
+
+  const categories = payload?.categories ?? [];
+
+  const productsOfCategory = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const product of payload?.products ?? []) {
+      counts.set(product.categoryId, (counts.get(product.categoryId) ?? 0) + 1);
+    }
+    return counts;
+  }, [payload]);
 
   const subcategoriesOfCategory = useMemo(() => {
     if (categoryId === 'all') return [];
@@ -153,252 +188,555 @@ export default function ShopCatalog() {
     });
   }, [payload, search, categoryId, subcategoryId, availableOnly]);
 
+  const scrollToProducts = () => {
+    productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const pickCategory = (id: string) => {
+    setCategoryId(id);
+    setSubcategoryId('all');
+    scrollToProducts();
+  };
+
   const selected = selectedId ? (payload?.products.find((product) => product.id === selectedId) ?? null) : null;
-  const selectedCategory = selected ? payload?.categories.find((category) => category.id === selected.categoryId) : null;
+  const selectedCategory = selected ? categories.find((category) => category.id === selected.categoryId) : null;
+  const selectedPrices = selected ? priceLabel(selected) : [];
+
+  const categoryName = (id: string) => categories.find((category) => category.id === id)?.name ?? '';
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--background)' }}>
-      {/* الترويسة: هوية المتجر وروابط التواصل */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b" style={{ borderColor: 'var(--line)' }}>
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+    <div className="min-h-screen text-slate-800" style={{ background: PAGE_BG }}>
+      {/* الشريط العلوي الرفيع */}
+      <div className="bg-slate-900 text-slate-300">
+        <div className="max-w-7xl mx-auto px-4 h-9 flex items-center justify-between text-xs">
+          <p className="truncate">مرحباً بكم في {payload?.storeName ?? 'متجر قطن سلطان'}</p>
+          <div className="flex items-center gap-4 shrink-0">
+            {payload?.socialLink && (
+              <a href={payload.socialLink} target="_blank" rel="noreferrer" className="hover:text-white transition-colors hidden sm:inline">
+                تابعنا
+              </a>
+            )}
+            <Link href="/chat" className="hover:text-white transition-colors">
+              محادثة المتجر
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* الترويسة: الشعار وبحث بارز وتواصل */}
+      <header className="bg-white border-b sticky top-0 z-30" style={{ borderColor: LINE }}>
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-6 flex-wrap">
+          <Link href="/shop" className="flex items-center gap-3 shrink-0">
             <span
-              className="w-10 h-10 rounded-xl grid place-items-center text-white text-lg font-bold shrink-0"
+              className="w-11 h-11 grid place-items-center text-white text-xl font-bold"
               style={{ background: PURPLE }}
             >
               س
             </span>
-            <div className="min-w-0">
-              <h1 className="font-bold text-slate-900 truncate leading-tight">{payload?.storeName ?? 'قطن سلطان'}</h1>
-              <p className="text-xs text-slate-400">الكتالوج والأسعار المباشرة</p>
+            <span className="leading-tight">
+              <span className="block font-bold text-slate-900">{payload?.storeName ?? 'قطن سلطان'}</span>
+              <span className="block text-[11px] text-slate-400">قطنيات · بشاكير · مفارش</span>
+            </span>
+          </Link>
+
+          <div className="relative flex-1 min-w-[220px] order-3 sm:order-2 w-full sm:w-auto">
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="ابحث عن منتج أو رقم موديل…"
+              className="w-full rounded-full border bg-slate-50 pr-12 pl-4 py-3 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition"
+              style={{ borderColor: LINE, '--tw-ring-color': PURPLE } as React.CSSProperties}
+            />
+            <span
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full grid place-items-center text-white"
+              style={{ background: PURPLE }}
+            >
+              <Search className="w-4 h-4" aria-hidden="true" />
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 order-2 sm:order-3 mr-auto sm:mr-0">
+            <Link
+              href="/chat"
+              className="flex items-center gap-2 text-sm font-semibold text-white px-5 py-3 rounded-full transition-opacity hover:opacity-90"
+              style={{ background: PURPLE }}
+            >
+              <MessageCircle className="w-4 h-4" aria-hidden="true" />
+              <span className="hidden md:inline">تواصل معنا</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* شريط الأقسام */}
+        <nav className="border-t" style={{ borderColor: LINE }}>
+          <div className="max-w-7xl mx-auto px-4 h-11 flex items-center gap-6 overflow-x-auto text-sm whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <span className="flex items-center gap-1.5 font-semibold text-slate-900 shrink-0">
+              <Layers className="w-4 h-4" style={{ color: PURPLE }} aria-hidden="true" />
+              تصفح الأقسام
+            </span>
+            <button
+              type="button"
+              onClick={() => pickCategory('all')}
+              className="transition-colors hover:text-slate-900"
+              style={{ color: categoryId === 'all' ? PURPLE : '#6b6d84' }}
+            >
+              الكل
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => pickCategory(category.id)}
+                className="transition-colors hover:text-slate-900"
+                style={{ color: categoryId === category.id ? PURPLE : '#6b6d84' }}
+              >
+                {category.name}
+              </button>
+            ))}
+          </div>
+        </nav>
+      </header>
+
+      {/* البانر الترحيبي */}
+      <section className="relative overflow-hidden" style={{ background: `linear-gradient(120deg, ${PURPLE_DARK}, ${PURPLE} 55%, #9a8af2)` }}>
+        <div aria-hidden="true" className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-white/10" />
+        <div aria-hidden="true" className="absolute -bottom-32 left-1/3 w-96 h-96 rounded-full bg-white/5" />
+        <div aria-hidden="true" className="absolute top-10 right-10 w-24 h-24 rounded-full border-8 border-white/10" />
+        <div className="relative max-w-7xl mx-auto px-4 py-14 md:py-20 text-center text-white">
+          <p className="text-sm font-semibold tracking-wide text-white/80 mb-3">أسعار وتوفر مباشرة من المحل</p>
+          <h1 className="text-3xl md:text-5xl font-bold leading-tight mb-4">{payload?.storeName ?? 'قطنيات وبشاكير سلطان'}</h1>
+          <p className="text-white/80 max-w-xl mx-auto mb-8 leading-relaxed">
+            تصفح الكتالوج كاملاً بألوانه ومقاساته وأسعاره المحدّثة لحظياً، وعند ما يعجبك كلمنا بالمحادثة ونحجزه لك.
+          </p>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={scrollToProducts}
+              className="bg-white font-semibold text-sm px-7 py-3.5 rounded-full transition-transform hover:scale-[1.03]"
+              style={{ color: PURPLE_DARK }}
+            >
+              تسوق الآن
+            </button>
+            <Link
+              href="/chat"
+              className="border border-white/60 text-white font-semibold text-sm px-7 py-3.5 rounded-full transition-colors hover:bg-white/10"
+            >
+              تواصل معنا
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <main className="max-w-7xl mx-auto px-4">
+        {/* بطاقات الأقسام */}
+        {categories.length > 0 && (
+          <section className="py-12">
+            <div className="flex items-end justify-between mb-6">
+              <div>
+                <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                  الأقسام
+                </p>
+                <h2 className="text-2xl font-bold text-slate-900">تسوق حسب القسم</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => pickCategory('all')}
+                className="flex items-center gap-1 text-sm font-medium transition-colors hover:opacity-80"
+                style={{ color: PURPLE }}
+              >
+                عرض الكل
+                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+              </button>
             </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {categories.map((category, index) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => pickCategory(category.id)}
+                  className="group text-right bg-white border overflow-hidden transition-shadow hover:shadow-lg"
+                  style={{ borderColor: LINE }}
+                >
+                  <div
+                    className="h-24 grid place-items-center"
+                    style={{ background: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length] }}
+                  >
+                    <span className="text-3xl font-bold text-white/95">{category.name.charAt(0)}</span>
+                  </div>
+                  <div className="p-3.5">
+                    <h3 className="font-semibold text-slate-900 group-hover:opacity-80 transition-opacity">
+                      {category.name}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">{productsOfCategory.get(category.id) ?? 0} منتج</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* المنتجات */}
+        <section ref={productsSectionRef} className="pb-14 scroll-mt-32">
+          <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
+            <div>
+              <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                الكتالوج
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900">المنتجات</h2>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={availableOnly}
+                  onClick={() => setAvailableOnly((value) => !value)}
+                  className="w-10 h-[22px] rounded-full p-[3px] transition-colors"
+                  style={{ background: availableOnly ? PURPLE : '#d4d5e0' }}
+                >
+                  <span
+                    className="block w-4 h-4 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: availableOnly ? 'translateX(-16px)' : 'translateX(0)' }}
+                  />
+                </button>
+                <span className="text-sm text-slate-600">المتوفر فقط</span>
+              </div>
+              <p className="text-sm text-slate-400">{loading ? 'جارٍ التحميل…' : `${filteredProducts.length} منتج`}</p>
+            </div>
+          </div>
+
+          {/* تبويبات الأقسام */}
+          {categories.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto mb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <TabChip active={categoryId === 'all'} onClick={() => pickCategory('all')}>
+                الكل
+              </TabChip>
+              {categories.map((category) => (
+                <TabChip
+                  key={category.id}
+                  active={categoryId === category.id}
+                  onClick={() => pickCategory(category.id)}
+                >
+                  {category.name}
+                </TabChip>
+              ))}
+            </div>
+          )}
+          {subcategoriesOfCategory.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto mb-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <TabChip active={subcategoryId === 'all'} onClick={() => setSubcategoryId('all')} small>
+                كل الشركات
+              </TabChip>
+              {subcategoriesOfCategory.map((subcategory) => (
+                <TabChip
+                  key={subcategory.id}
+                  active={subcategoryId === subcategory.id}
+                  onClick={() => setSubcategoryId(subcategoryId === subcategory.id ? 'all' : subcategory.id)}
+                  small
+                >
+                  {subcategory.name}
+                </TabChip>
+              ))}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {Array.from({ length: 10 }).map((_, index) => (
+                <div key={index} className="bg-white border" style={{ borderColor: LINE }}>
+                  <div className="aspect-square bg-slate-100 animate-pulse" />
+                  <div className="p-3.5 space-y-2">
+                    <div className="h-3 rounded bg-slate-100 animate-pulse w-1/3" />
+                    <div className="h-4 rounded bg-slate-100 animate-pulse w-4/5" />
+                    <div className="h-4 rounded bg-slate-100 animate-pulse w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <StateBox
+              title="تعذر تحميل الكتالوج"
+              hint="تحقق من اتصالك بالإنترنت ثم أعد المحاولة."
+              action={
+                <button
+                  type="button"
+                  onClick={() => setRetryCount((count) => count + 1)}
+                  className="flex items-center gap-2 text-sm font-semibold text-white px-5 py-2.5 rounded-full"
+                  style={{ background: PURPLE }}
+                >
+                  <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                  إعادة المحاولة
+                </button>
+              }
+            />
+          ) : filteredProducts.length === 0 ? (
+            <StateBox
+              title="لا توجد نتائج مطابقة"
+              hint="جرّب توسيع البحث أو إلغاء الفلاتر."
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('');
+                    setCategoryId('all');
+                    setSubcategoryId('all');
+                    setAvailableOnly(false);
+                  }}
+                  className="text-sm font-semibold text-white px-5 py-2.5 rounded-full"
+                  style={{ background: PURPLE }}
+                >
+                  إلغاء كل الفلاتر
+                </button>
+              }
+            />
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {filteredProducts.map((product) => {
+                const available = isProductAvailable(product);
+                const prices = priceLabel(product);
+                const colors = uniqueColors(product);
+                return (
+                  <article
+                    key={product.id}
+                    className="group relative bg-white border overflow-hidden transition-shadow hover:shadow-lg"
+                    style={{ borderColor: LINE }}
+                  >
+                    <div className="relative overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(product.id)}
+                        className="block w-full"
+                        aria-label={`عرض صورة ${product.name}`}
+                      >
+                        <ProductImage
+                          product={product}
+                          className="aspect-square w-full transition-transform duration-500 group-hover:scale-105"
+                        />
+                      </button>
+                      {!available && (
+                        <span className="absolute top-3 right-3 bg-slate-900/80 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm">
+                          غير متوفر
+                        </span>
+                      )}
+                      {/* شريط الإجراء عند التحويم — العرض السريع مثبّت أسفل الصورة على غرار قوالب Molla */}
+                      <div className="absolute inset-x-3 bottom-3 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedId(product.id)}
+                          className="w-full flex items-center justify-center gap-2 bg-white/95 backdrop-blur border shadow-md rounded-full py-2.5 text-sm font-semibold text-slate-800 hover:bg-[#7666e8] hover:text-white transition-colors"
+                          style={{ borderColor: LINE }}
+                        >
+                          <Eye className="w-4 h-4" aria-hidden="true" />
+                          عرض سريع
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(product.id)}
+                      className="block w-full text-right p-3.5"
+                      aria-label={`عرض تفاصيل ${product.name}`}
+                    >
+                      <p className="text-[11px] font-semibold tracking-wide text-slate-400 mb-1">
+                        {categoryName(product.categoryId) || 'منتجات'}
+                      </p>
+                      <h3 className="text-sm font-semibold text-slate-900 leading-snug line-clamp-2 min-h-[2.6em]">
+                        {product.name}
+                      </h3>
+                      <div className="mt-1.5 space-y-0.5">
+                        {prices.length > 0 ? (
+                          prices.map((part) => (
+                            <p key={part} className="text-base font-bold" style={{ color: PURPLE_DARK }}>
+                              {part}
+                            </p>
+                          ))
+                        ) : (
+                          <p className="text-sm text-slate-400">السعر عند الطلب</p>
+                        )}
+                      </div>
+                      {colors.length > 0 && (
+                        <p className="text-[11px] text-slate-400 mt-2 truncate">
+                          {colors.length > 2
+                            ? `${colors.slice(0, 2).join(' · ')} · +${colors.length - 2}`
+                            : colors.join(' · ')}
+                        </p>
+                      )}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* صناديق المزايا */}
+        <section className="border-t py-10" style={{ borderColor: LINE }}>
+          <div className="grid sm:grid-cols-3 gap-6">
+            <FeatureBox
+              icon={<Tag className="w-6 h-6" style={{ color: PURPLE }} aria-hidden="true" />}
+              title="أسعار محدّثة من المحل"
+              text="كل الأسعار والموديلات مأخوذة مباشرة من نظام المحل لحظة تصفحك."
+            />
+            <FeatureBox
+              icon={<ShieldCheck className="w-6 h-6" style={{ color: PURPLE }} aria-hidden="true" />}
+              title="توفر لحظي للكميات"
+              text="ما تراه من كميات هو رصيد المخزون الفعلي وقت فتح الصفحة."
+            />
+            <FeatureBox
+              icon={<MessageCircle className="w-6 h-6" style={{ color: PURPLE }} aria-hidden="true" />}
+              title="طلب مباشر بالمحادثة"
+              text="اختر ما يعجبك واطلبه فوراً عبر محادثة المتجر وسنؤكده معك."
+            />
+          </div>
+        </section>
+      </main>
+
+      {/* شريط التواصل */}
+      <section className="py-14" style={{ background: `linear-gradient(120deg, ${PURPLE_DARK}, ${PURPLE})` }}>
+        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-right">
+          <div className="text-white">
+            <h2 className="text-2xl font-bold mb-1.5">عندك سؤال عن موديل أو مقاس؟</h2>
+            <p className="text-white/80 text-sm">فريق المحل جاهز بالمحادثة — رد سريع خلال أوقات الدوام.</p>
           </div>
           <Link
             href="/chat"
-            className="flex items-center gap-2 text-sm font-medium text-white px-4 py-2.5 rounded-xl transition-opacity hover:opacity-90 shrink-0"
-            style={{ background: PURPLE }}
+            className="shrink-0 flex items-center gap-2 bg-white font-semibold text-sm px-8 py-3.5 rounded-full transition-transform hover:scale-[1.03]"
+            style={{ color: PURPLE_DARK }}
           >
             <MessageCircle className="w-4 h-4" aria-hidden="true" />
-            <span className="hidden sm:inline">محادثة المتجر</span>
-            <span className="sm:hidden">محادثة</span>
+            ابدأ المحادثة
           </Link>
         </div>
-      </header>
+      </section>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        {/* البحث */}
-        <div className="relative mb-4">
-          <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" aria-hidden="true" />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="ابحث باسم المنتج أو رقم الموديل…"
-            className="w-full rounded-2xl border bg-white pl-4 pr-11 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-shadow"
-            style={{ borderColor: 'var(--line)', '--tw-ring-color': PURPLE } as React.CSSProperties}
+      {/* الفوتر */}
+      <footer className="bg-white border-t" style={{ borderColor: LINE }}>
+        <div className="max-w-7xl mx-auto px-4 py-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="w-10 h-10 grid place-items-center text-white text-lg font-bold" style={{ background: PURPLE }}>
+                س
+              </span>
+              <span className="font-bold text-slate-900">{payload?.storeName ?? 'قطن سلطان'}</span>
+            </div>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              كتالوج المتجر الإلكتروني — تسوق بشكل مباشر واطلب عبر المحادثة.
+            </p>
+            {payload?.socialLink && (
+              <a
+                href={payload.socialLink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block mt-4 text-sm font-semibold"
+                style={{ color: PURPLE }}
+              >
+                تابعنا على وسائل التواصل
+              </a>
+            )}
+          </div>
+          <FooterColumn
+            title="الأقسام"
+            links={categories.slice(0, 6).map((category) => ({
+              label: category.name,
+              onClick: () => pickCategory(category.id),
+            }))}
           />
-        </div>
-
-        {/* فلاتر الأقسام */}
-        {payload && payload.categories.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <FilterChip active={categoryId === 'all'} onClick={() => { setCategoryId('all'); setSubcategoryId('all'); }}>
-              الكل
-            </FilterChip>
-            {payload.categories.map((category) => (
-              <FilterChip
-                key={category.id}
-                active={categoryId === category.id}
-                onClick={() => {
-                  setCategoryId(categoryId === category.id ? 'all' : category.id);
-                  setSubcategoryId('all');
-                }}
-              >
-                {category.name}
-              </FilterChip>
-            ))}
-          </div>
-        )}
-        {subcategoriesOfCategory.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <FilterChip active={subcategoryId === 'all'} onClick={() => setSubcategoryId('all')} small>
-              كل الشركات
-            </FilterChip>
-            {subcategoriesOfCategory.map((subcategory) => (
-              <FilterChip
-                key={subcategory.id}
-                active={subcategoryId === subcategory.id}
-                onClick={() => setSubcategoryId(subcategoryId === subcategory.id ? 'all' : subcategory.id)}
-                small
-              >
-                {subcategory.name}
-              </FilterChip>
-            ))}
-          </div>
-        )}
-
-        {/* شريط النتائج */}
-        <div className="flex items-center justify-between gap-3 flex-wrap my-4">
-          <p className="text-sm text-slate-500">
-            {loading ? 'جارٍ تحميل الكتالوج…' : `${filteredProducts.length} منتج`}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={availableOnly}
-              onClick={() => setAvailableOnly((value) => !value)}
-              className="w-10 h-[22px] rounded-full p-[3px] transition-colors"
-              style={{ background: availableOnly ? PURPLE : '#d4d5e0' }}
-            >
-              <span
-                className="block w-4 h-4 rounded-full bg-white shadow transition-transform"
-                style={{ transform: availableOnly ? 'translateX(-16px)' : 'translateX(0)' }}
-              />
-            </button>
-            <span className="text-sm text-slate-600">المتوفر فقط</span>
+          <FooterColumn
+            title="روابط سريعة"
+            links={[
+              { label: 'جميع المنتجات', onClick: () => pickCategory('all') },
+              { label: 'محادثة المتجر', href: '/chat' },
+            ]}
+          />
+          <div>
+            <h3 className="font-bold text-slate-900 mb-4">تواصل معنا</h3>
+            <ul className="space-y-2.5 text-sm text-slate-500">
+              {payload?.contactEmail && (
+                <li>
+                  <a href={`mailto:${payload.contactEmail}`} className="hover:opacity-80 transition-opacity" style={{ color: PURPLE }}>
+                    {payload.contactEmail}
+                  </a>
+                </li>
+              )}
+              <li>
+                <Link href="/chat" className="hover:opacity-80 transition-opacity" style={{ color: PURPLE }}>
+                  محادثة مباشرة مع المحل
+                </Link>
+              </li>
+            </ul>
           </div>
         </div>
-
-        {/* المحتوى */}
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <div key={index} className="rounded-2xl bg-white border overflow-hidden" style={{ borderColor: 'var(--line)' }}>
-                <div className="aspect-square bg-slate-100 animate-pulse" />
-                <div className="p-3 space-y-2">
-                  <div className="h-3.5 rounded bg-slate-100 animate-pulse w-3/4" />
-                  <div className="h-3 rounded bg-slate-100 animate-pulse w-1/2" />
-                </div>
-              </div>
-            ))}
+        <div className="border-t" style={{ borderColor: LINE }}>
+          <div className="max-w-7xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+            <p>
+              © {new Date().getFullYear()} {payload?.storeName ?? 'قطن سلطان'} — جميع الحقوق محفوظة
+            </p>
+            <p>الأسعار والتوفر محدّثان لحظياً وقابلة للتغيير قبل تأكيد الطلب.</p>
           </div>
-        ) : error ? (
-          <div className="rounded-2xl bg-white border py-16 px-6 flex flex-col items-center text-center" style={{ borderColor: 'var(--line)' }}>
-            <PackageSearch className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
-            <p className="font-semibold text-slate-700 mb-1">تعذر تحميل الكتالوج</p>
-            <p className="text-sm text-slate-400 mb-5">تحقق من اتصالك بالإنترنت ثم أعد المحاولة.</p>
-            <button
-              type="button"
-              onClick={() => setRetryCount((count) => count + 1)}
-              className="flex items-center gap-2 text-sm font-medium text-white px-4 py-2.5 rounded-xl"
-              style={{ background: PURPLE }}
-            >
-              <RotateCcw className="w-4 h-4" aria-hidden="true" />
-              إعادة المحاولة
-            </button>
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="rounded-2xl bg-white border py-16 px-6 flex flex-col items-center text-center" style={{ borderColor: 'var(--line)' }}>
-            <PackageSearch className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
-            <p className="font-semibold text-slate-700 mb-1">لا توجد نتائج مطابقة</p>
-            <p className="text-sm text-slate-400">جرّب توسيع البحث أو إلغاء الفلاتر.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-            {filteredProducts.map((product) => {
-              const available = isProductAvailable(product);
-              const prices = priceLabel(product);
-              const colors = uniqueColors(product);
-              return (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={() => setSelectedId(product.id)}
-                  className="text-right rounded-2xl bg-white border overflow-hidden transition-shadow hover:shadow-md"
-                  style={{ borderColor: 'var(--line)' }}
-                >
-                  <div className="relative">
-                    <ProductImage product={product} className="aspect-square w-full" />
-                    {!available && (
-                      <span className="absolute inset-x-3 bottom-3 rounded-lg bg-slate-900/70 text-white text-xs font-medium py-1.5 text-center backdrop-blur-sm">
-                        غير متوفر حالياً
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <h3 className="text-sm font-semibold text-slate-800 leading-snug line-clamp-2 min-h-[2.5em]">
-                      {product.name}
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-1" dir="ltr">
-                      {product.modelNumber}
-                    </p>
-                    <div className="mt-2 space-y-0.5">
-                      {prices.length > 0 ? (
-                        prices.map((part) => (
-                          <p key={part} className="text-sm font-bold" style={{ color: PURPLE }}>
-                            {part}
-                          </p>
-                        ))
-                      ) : (
-                        <p className="text-sm text-slate-400">السعر عند الطلب</p>
-                      )}
-                    </div>
-                    {colors.length > 0 && (
-                      <p className="text-[11px] text-slate-400 mt-1.5 truncate">
-                        {colors.length > 2 ? `${colors.slice(0, 2).join(' · ')} · +${colors.length - 2}` : colors.join(' · ')}
-                      </p>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </main>
-
-      <footer className="max-w-6xl mx-auto px-4 py-8 text-center space-y-2">
-        {payload?.socialLink && (
-          <a
-            href={payload.socialLink}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium"
-            style={{ color: PURPLE }}
-          >
-            <Store className="w-4 h-4" aria-hidden="true" />
-            تابعنا على وسائل التواصل
-          </a>
-        )}
-        <p className="text-xs text-slate-400">الأسعار والتوفر محدّثان لحظياً — للطلب والاستفسار استخدم محادثة المتجر.</p>
+        </div>
       </footer>
 
-      {/* نافذة تفاصيل المنتج */}
+      {/* نافذة العرض السريع */}
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={() => setSelectedId(null)} />
           <div
             role="dialog"
             aria-modal="true"
-            className="relative w-full sm:max-w-2xl max-h-[88vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-2xl shadow-xl"
+            className="relative w-full sm:max-w-3xl max-h-[92vh] overflow-y-auto bg-white shadow-2xl"
           >
             <button
               type="button"
               onClick={() => setSelectedId(null)}
               aria-label="إغلاق"
-              className="absolute top-4 left-4 z-10 p-1.5 rounded-full bg-white/90 border border-slate-200 text-slate-500 hover:text-slate-700 shadow-sm"
+              className="absolute top-3 left-3 z-10 p-2 rounded-full bg-white border shadow-sm transition-colors hover:text-slate-900"
+              style={{ borderColor: LINE, color: '#9aa0b0' }}
             >
               <X className="w-4 h-4" aria-hidden="true" />
             </button>
-            <div className="grid sm:grid-cols-[220px_minmax(0,1fr)]">
-              <ProductImage product={selected} className="aspect-square sm:aspect-auto sm:h-full w-full" />
-              <div className="p-5">
-                <p className="text-xs font-semibold mb-1" style={{ color: PURPLE }}>
-                  {selectedCategory?.name ?? 'قطنيات وبشاكير'}
+            <div className="grid md:grid-cols-2">
+              <div className="relative bg-slate-50">
+                <ProductImage product={selected} className="aspect-square md:aspect-auto md:h-full md:min-h-[420px] w-full" />
+                {!isProductAvailable(selected) && (
+                  <span className="absolute top-4 right-4 bg-slate-900/80 text-white text-xs font-semibold px-3 py-1.5 rounded-full backdrop-blur-sm">
+                    غير متوفر حالياً
+                  </span>
+                )}
+              </div>
+              <div className="p-6 md:p-8 flex flex-col">
+                <p className="text-xs font-bold tracking-widest mb-2" style={{ color: PURPLE }}>
+                  {selectedCategory?.name ?? 'منتجات'}
                 </p>
-                <h2 className="text-lg font-bold text-slate-900 leading-snug">{selected.name}</h2>
+                <h2 className="text-xl font-bold text-slate-900 leading-snug">{selected.name}</h2>
                 <p className="text-sm text-slate-400 mt-1" dir="ltr">
                   موديل: {selected.modelNumber}
                 </p>
 
-                <div className="mt-4">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-2">
-                    التفصيلات والأسعار
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedPrices.length > 0 ? (
+                    selectedPrices.map((part) => (
+                      <span
+                        key={part}
+                        className="text-lg font-bold px-3 py-1 rounded-lg"
+                        style={{ color: PURPLE_DARK, background: `${PURPLE}14` }}
+                      >
+                        {part}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-slate-400">السعر عند الطلب</span>
+                  )}
+                </div>
+
+                <div className="mt-5 flex-1">
+                  <h3 className="text-sm font-bold text-slate-900 mb-2">
+                    التفصيلات المتوفرة
                     <span className="font-normal text-slate-400"> ({selected.entries.length})</span>
                   </h3>
-                  <ul className="divide-y rounded-xl border overflow-hidden" style={{ borderColor: 'var(--line)' }}>
+                  <ul className="divide-y border rounded-xl overflow-hidden bg-white" style={{ borderColor: LINE }}>
                     {selected.entries.map((entry, index) => (
-                      <li key={index} className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm bg-white">
+                      <li key={index} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                         <div className="min-w-0">
                           <p className="font-medium text-slate-800">
                             {[entry.color, entry.size].filter(Boolean).join(' · ') || 'تفصيلة'}
@@ -409,7 +747,9 @@ export default function ShopCatalog() {
                         </div>
                         <p className="font-bold text-slate-900 whitespace-nowrap">
                           {formatPrice(entry.salePrice)}{' '}
-                          <span className="text-xs font-normal text-slate-400">{entry.currency === 'SYP' ? 'ل.س' : '$'}</span>
+                          <span className="text-xs font-normal text-slate-400">
+                            {entry.currency === 'SYP' ? 'ل.س' : '$'}
+                          </span>
                         </p>
                       </li>
                     ))}
@@ -418,7 +758,7 @@ export default function ShopCatalog() {
 
                 <Link
                   href="/chat"
-                  className="mt-5 flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  className="mt-6 flex items-center justify-center gap-2 w-full py-3.5 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: PURPLE }}
                 >
                   <MessageCircle className="w-4 h-4" aria-hidden="true" />
@@ -433,7 +773,7 @@ export default function ShopCatalog() {
   );
 }
 
-function FilterChip({
+function TabChip({
   active,
   onClick,
   small,
@@ -448,16 +788,78 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full border font-medium transition-colors ${
-        small ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'
+      className={`shrink-0 rounded-full font-medium transition-colors ${
+        small ? 'px-3.5 py-1.5 text-xs' : 'px-5 py-2 text-sm'
       }`}
       style={
         active
-          ? { background: PURPLE, borderColor: PURPLE, color: '#fff' }
-          : { background: '#fff', borderColor: 'var(--line)', color: '#5b5d75' }
+          ? { background: PURPLE, color: '#fff' }
+          : { background: '#fff', border: `1px solid ${LINE}`, color: '#5b5d75' }
       }
     >
       {children}
     </button>
+  );
+}
+
+function FeatureBox({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <div className="flex items-start gap-4 bg-white border p-5" style={{ borderColor: LINE }}>
+      <span className="shrink-0 w-12 h-12 grid place-items-center rounded-full" style={{ background: `${PURPLE}14` }}>
+        {icon}
+      </span>
+      <div>
+        <h3 className="font-bold text-slate-900 mb-1">{title}</h3>
+        <p className="text-sm text-slate-500 leading-relaxed">{text}</p>
+      </div>
+    </div>
+  );
+}
+
+function StateBox({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white border py-20 px-6 flex flex-col items-center justify-center text-center" style={{ borderColor: LINE }}>
+      <PackageSearch className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
+      <p className="font-bold text-slate-900 mb-1">{title}</p>
+      <p className="text-sm text-slate-400 mb-5">{hint}</p>
+      {action}
+    </div>
+  );
+}
+
+function FooterColumn({
+  title,
+  links,
+}: {
+  title: string;
+  links: { label: string; href?: string; onClick?: () => void }[];
+}) {
+  return (
+    <div>
+      <h3 className="font-bold text-slate-900 mb-4">{title}</h3>
+      <ul className="space-y-2.5 text-sm text-slate-500">
+        {links.map((link) => (
+          <li key={link.label}>
+            {link.href ? (
+              <Link href={link.href} className="transition-colors hover:text-slate-900">
+                {link.label}
+              </Link>
+            ) : (
+              <button type="button" onClick={link.onClick} className="transition-colors hover:text-slate-900">
+                {link.label}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

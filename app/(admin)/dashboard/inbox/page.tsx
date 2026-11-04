@@ -1,4 +1,4 @@
-import InboxManager from '../../components/inbox/InboxManager';
+import InboxManager from '../../../components/inbox/InboxManager';
 
 export const metadata = {
   title: 'محادثات العملاء | نظام إدارة العملاء',

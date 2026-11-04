@@ -1,4 +1,4 @@
-import OffersManager from '../../components/offers/OffersManager';
+import OffersManager from '../../../components/offers/OffersManager';
 
 export const metadata = {
   title: 'العروضات | نظام إدارة العملاء',

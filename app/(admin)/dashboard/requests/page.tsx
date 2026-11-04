@@ -1,4 +1,4 @@
-import RequestsManager from '../../components/requests/RequestsManager';
+import RequestsManager from '../../../components/requests/RequestsManager';
 
 export const metadata = {
   title: 'توصيات العملاء | نظام إدارة العملاء',

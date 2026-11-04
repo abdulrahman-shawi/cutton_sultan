@@ -1,5 +1,5 @@
-import SettingsForm from '../../components/settings/SettingsForm';
-import BackupSection from '../../components/settings/BackupSection';
+import SettingsForm from '../../../components/settings/SettingsForm';
+import BackupSection from '../../../components/settings/BackupSection';
 
 export const metadata = {
   title: 'الإعدادات | نظام إدارة العملاء',
