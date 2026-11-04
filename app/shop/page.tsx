@@ -1,10 +1,10 @@
 import ShopCatalog from './ShopCatalog';
 
 export const metadata = {
-  title: 'المتجر الإلكتروني | قطن سلطان',
-  description: 'تصفح منتجات قطنيات وبشاكير سلطان مع الأسعار والتوفر المباشر.',
+  title: 'جميع المنتجات | قطن سلطان',
+  description: 'الكتالوج الكامل لمنتجات قطنيات وبشاكير سلطان مع بحث وفلاتر الأقسام.',
 };
 
 export default function ShopPage() {
-  return <ShopCatalog />;
+  return <ShopCatalog mode="full" />;
 }
