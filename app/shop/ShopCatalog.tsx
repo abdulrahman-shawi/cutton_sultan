@@ -48,7 +48,17 @@ interface ShopPayload {
   categories: { id: string; name: string; description: string }[];
   subcategories: { id: string; categoryId: string; name: string }[];
   products: CatalogProduct[];
+  // ترتيب معرفات المنتجات الأكثر مبيعاً (تنازلياً) — يُحسب على الخادم من فواتير البيع
+  bestSellers: string[];
 }
+
+// تبويبات قسم المنتجات في الصفحة الرئيسية على غرار ثيم Molla
+type HomeTab = 'new' | 'best' | 'available';
+const HOME_TABS: { key: HomeTab; label: string }[] = [
+  { key: 'new', label: 'أحدث المنتجات' },
+  { key: 'best', label: 'الأكثر مبيعاً' },
+  { key: 'available', label: 'متوفر الآن' },
+];
 
 const PURPLE = '#7666e8';
 const PURPLE_DARK = '#5b4bd1';
@@ -311,8 +321,18 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     router.push(q ? `/shop?q=${encodeURIComponent(q)}` : '/shop');
   };
 
-  // خمسة منتجات للصفحة الرئيسية — ترتيبها كما في الكتالوج (الأحدث مضافاً أولاً)
-  const featuredProducts = useMemo(() => (payload?.products ?? []).slice(0, 5), [payload]);
+  // خمسة منتجات للصفحة الرئيسية حسب التبويب النشط:
+  // أحدث = ترتيب الكتالوج (الأحدث مضافاً أولاً) · الأكثر مبيعاً = ترتيب المبيعات الفعلي · متوفر = ذو رصيد حالي
+  const [homeTab, setHomeTab] = useState<HomeTab>('new');
+  const featuredProducts = useMemo(() => {
+    const all = payload?.products ?? [];
+    if (homeTab === 'available') return all.filter(isProductAvailable).slice(0, 5);
+    if (homeTab === 'best') {
+      const rank = new Map((payload?.bestSellers ?? []).map((id, index) => [id, index]));
+      return [...all].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)).slice(0, 5);
+    }
+    return all.slice(0, 5);
+  }, [payload, homeTab]);
 
   const selected = selectedId ? (payload?.products.find((product) => product.id === selectedId) ?? null) : null;
   const selectedCategory = selected ? categories.find((category) => category.id === selected.categoryId) : null;
@@ -622,11 +642,9 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
             <div>
               <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
-                {isHome ? 'الأحدث' : 'الكتالوج'}
+                {isHome ? 'منتجات مختارة' : 'الكتالوج'}
               </p>
-              <h2 className="text-2xl font-bold text-slate-900">
-                {isHome ? 'أحدث المنتجات' : 'المنتجات'}
-              </h2>
+              <h2 className="text-2xl font-bold text-slate-900">{isHome ? 'تسوق الآن' : 'المنتجات'}</h2>
             </div>
             {isHome ? (
               <Link
@@ -659,6 +677,26 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
               </div>
             )}
           </div>
+
+          {/* تبويبات Molla — الأحدث / الأكثر مبيعاً / متوفر الآن — في الرئيسية فقط */}
+          {isHome && (
+            <div className="flex gap-6 border-b mb-6 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: LINE }}>
+              {HOME_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setHomeTab(tab.key)}
+                  className="pb-2.5 -mb-px border-b-2 text-sm font-semibold transition-colors whitespace-nowrap"
+                  style={{
+                    borderColor: homeTab === tab.key ? PURPLE : 'transparent',
+                    color: homeTab === tab.key ? PURPLE : '#6b6d84',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* تبويبات الأقسام — صفحة الكتالوج الكامل فقط */}
           {!isHome && categories.length > 0 && (
@@ -731,8 +769,18 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           ) : isHome ? (
             featuredProducts.length === 0 ? (
               <StateBox
-                title="لا توجد منتجات بعد"
-                hint="تفضل بزيارتنا لاحقاً — الكتالوج يُحدَّث باستمرار."
+                title={
+                  homeTab === 'best'
+                    ? 'لا توجد مبيعات بعد'
+                    : homeTab === 'available'
+                      ? 'لا توجد منتجات متوفرة حالياً'
+                      : 'لا توجد منتجات بعد'
+                }
+                hint={
+                  homeTab === 'best'
+                    ? 'عند أول عمليات البيع ستظهر هنا منتجاتك الأكثر طلباً.'
+                    : 'تفضل بزيارتنا لاحقاً — الكتالوج يُحدَّث باستمرار.'
+                }
               />
             ) : (
               <>
