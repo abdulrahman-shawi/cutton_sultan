@@ -7,6 +7,7 @@ import type { Product } from '../../components/products/types';
 import type { Category } from '../../components/categories/types';
 import type { Subcategory } from '../../components/subcategories/types';
 import type { Invoice } from '../../components/invoices/types';
+import type { Offer } from '../../components/offers/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,12 +21,13 @@ interface ShopSettings {
 
 // GET /api/shop — لقطة الكتالوج الكاملة للواجهة العامة
 export async function GET() {
-  const [settings, categories, subcategories, products, invoices] = await Promise.all([
+  const [settings, categories, subcategories, products, invoices, offers] = await Promise.all([
     readSingleton('sultan_store_settings') as Promise<ShopSettings | null>,
     readCollection('sultan_categories') as Promise<Category[] | null>,
     readCollection('sultan_subcategories') as Promise<Subcategory[] | null>,
     readCollection('sultan_products') as Promise<Product[] | null>,
     readCollection('sultan_invoices') as Promise<Invoice[] | null>,
+    readCollection('sultan_offers') as Promise<Offer[] | null>,
   ]);
 
   const activeCategories = (categories ?? []).filter((category) => category.status === 'نشط');
@@ -62,6 +64,18 @@ export async function GET() {
     })),
   }));
 
+  // العروض النشطة للعرض في واجهة المتجر: الاسم والوصف وقيمة الخصم وعدد بنود الربطة فقط
+  const activeOffers = (offers ?? [])
+    .filter((offer) => offer.active)
+    .map((offer) => ({
+      id: offer.id,
+      title: offer.title,
+      description: offer.description ?? '',
+      discountType: offer.discountType === 'fixed' ? ('fixed' as const) : ('percent' as const),
+      discountValue: offer.discountValue,
+      itemsCount: (offer.items ?? []).length,
+    }));
+
   return NextResponse.json({
     storeName: settings?.storeName?.trim() || 'قطنيات وبشاكير سلطان',
     contactEmail: settings?.contactEmail?.trim() ?? '',
@@ -80,5 +94,6 @@ export async function GET() {
     })),
     products: catalogProducts,
     bestSellers,
+    offers: activeOffers,
   });
 }

@@ -7,11 +7,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowUp,
   ChevronLeft,
+  ChevronRight,
   Eye,
   Layers,
   MessageCircle,
   PackageSearch,
+  Percent,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -50,6 +53,17 @@ interface ShopPayload {
   products: CatalogProduct[];
   // ترتيب معرفات المنتجات الأكثر مبيعاً (تنازلياً) — يُحسب على الخادم من فواتير البيع
   bestSellers: string[];
+  // عروض المتجر النشطة للعرض في الرئيسية
+  offers: ShopOffer[];
+}
+
+interface ShopOffer {
+  id: string;
+  title: string;
+  description: string;
+  discountType: 'percent' | 'fixed';
+  discountValue: number;
+  itemsCount: number;
 }
 
 // تبويبات قسم المنتجات في الصفحة الرئيسية على غرار ثيم Molla
@@ -187,8 +201,31 @@ function ProductImage({ product, className }: { product: CatalogProduct; classNa
   );
 }
 
+const RECENTLY_VIEWED_KEY = 'sultan_shop_recent';
+
+function readRecentIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(RECENTLY_VIEWED_KEY) ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// تسجيل منتج في قائمة «شوهد مؤخراً» (أحدث أولاً، بحد أقصى 8) على جهاز العميل
+function pushRecentId(id: string): string[] {
+  const next = [id, ...readRecentIds().filter((item) => item !== id)].slice(0, 8);
+  try {
+    window.localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next));
+  } catch {
+    // التخزين غير متاح
+  }
+  return next;
+}
+
 // mode = home: واجهة الرابط الأساسي / — نفس هوية المتجر لكن بخمسة منتجات وزر للكتالوج الكامل
-// mode = full: صفحة /shop الكاملة بالبحث والفلاتر — تستقبل ?q= و ?cat= من الصفحة الرئيسية
+// mode = full: صفحة /shop الكاملة بالبحث والفلاتر — تستقبل ?q= و ?cat= و ?sub= من الصفحة الرئيسية
 export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' }) {
   const isHome = mode === 'home';
   const router = useRouter();
@@ -204,7 +241,11 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
   const [pickedColor, setPickedColor] = useState('');
   const [pickedSize, setPickedSize] = useState('');
   const [pickedSub, setPickedSub] = useState('');
+  const [slide, setSlide] = useState(0);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
   const productsSectionRef = useRef<HTMLElement>(null);
+  const offersSectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,23 +270,39 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     };
   }, [retryCount]);
 
-  // صفحة الكتالوج الكامل تستقبل بحثاً أو قسماً قادماً من الصفحة الرئيسية عبر الرابط
+  // صفحة الكتالوج الكامل تستقبل بحثاً أو قسماً أو شركةً قادمة من الصفحة الرئيسية عبر الرابط
   useEffect(() => {
-    if (isHome || typeof window === 'undefined') return;
+    if (isHome || typeof window === 'undefined' || !payload) return;
     try {
       const params = new URLSearchParams(window.location.search);
       const q = params.get('q');
       const cat = params.get('cat');
+      const sub = params.get('sub');
       if (q) setSearch(q);
-      if (cat) {
-        setCategoryId(cat);
-        setTimeout(() => scrollToProducts(), 300);
+      if (cat) setCategoryId(cat);
+      if (sub) {
+        setSubcategoryId(sub);
+        const parent = payload.subcategories.find((item) => item.id === sub)?.categoryId;
+        if (parent) setCategoryId(parent);
       }
+      if (q || cat || sub) setTimeout(() => scrollToProducts(), 300);
     } catch {
       // بارامترات غير مقروءة — نتجاهلها
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHome, payload]);
+
+  // «شوهد مؤخراً» يُحمّل من جهاز العميل عند الدخول للرئيسية
+  useEffect(() => {
+    if (isHome) setRecentIds(readRecentIds());
   }, [isHome]);
+
+  // ظهور زر «العودة للأعلى» بعد تمرير بعيد
+  useEffect(() => {
+    const onScroll = () => setShowBackToTop(window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // قفل تمرير الصفحة عند فتح نافذة العرض السريع
   useEffect(() => {
@@ -255,12 +312,14 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     };
   }, [selectedId]);
 
-  // عند فتح نافذة منتج: تحديد أول قسم فرعي ولون ومقاس تلقائياً فيظهر السعر والتوفر فوراً
+  // عند فتح نافذة منتج: تحديد أول قسم فرعي ولون ومقاس تلقائياً فيظهر السعر والتوفر فوراً،
+  // وتسجيل المنتج في «شوهد مؤخراً»
   useEffect(() => {
     const product = selectedId ? (payload?.products.find((item) => item.id === selectedId) ?? null) : null;
     setPickedSub(product ? (uniqueSubcategoryIds(product)[0] ?? '') : '');
     setPickedColor(product ? (uniqueColors(product)[0] ?? '') : '');
     setPickedSize(product ? (uniqueSizes(product)[0] ?? '') : '');
+    if (selectedId && isHome) setRecentIds(pushRecentId(selectedId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
@@ -333,6 +392,92 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     }
     return all.slice(0, 5);
   }, [payload, homeTab]);
+
+  const offers = useMemo(() => payload?.offers ?? [], [payload]);
+
+  // شرائح البانر الترحيبي: ترحيب دائماً، شريحة عروض عند وجود عروض نشطة، وشريحة محادثة دائماً
+  const slides = useMemo(() => {
+    const list: {
+      key: string;
+      eyebrow: string;
+      title: string;
+      text: string;
+      primary: { label: string; action: 'scroll' | 'chat' | 'offers' };
+    }[] = [
+      {
+        key: 'welcome',
+        eyebrow: 'أسعار وتوفر مباشرة من المحل',
+        title: payload?.storeName ?? 'قطنيات وبشاكير سلطان',
+        text: 'تصفح الكتالوج كاملاً بألوانه ومقاساته وأسعاره المحدّثة لحظياً، وعند ما يعجبك كلمنا بالمحادثة ونحجزه لك.',
+        primary: { label: 'تسوق الآن', action: 'scroll' },
+      },
+    ];
+    if (offers.length > 0) {
+      const top = [...offers].sort((a, b) => b.discountValue - a.discountValue)[0];
+      list.push({
+        key: 'offers',
+        eyebrow: 'عروضنا الحالية',
+        title: top.discountType === 'percent' ? `خصم حتى ${top.discountValue}٪` : `خصم ${formatPrice(top.discountValue)} ل.س`,
+        text: top.title + (top.description ? ` — ${top.description}` : ''),
+        primary: { label: 'اكتشف العروض', action: 'offers' },
+      });
+    }
+    list.push({
+      key: 'chat',
+      eyebrow: 'خدمة مباشرة',
+      title: 'اطلب عبر المحادثة',
+      text: 'اختر منتجك وتواصل معنا مباشرة — فريق المحل جاهز للرد ومساعدتك بالاختيار.',
+      primary: { label: 'ابدأ المحادثة', action: 'chat' },
+    });
+    return list;
+  }, [payload, offers]);
+
+  // شركات المنتجات (الأقسام الفرعية) فريدة بالاسم للعرض كبلاطات في الرئيسية
+  const brandTiles = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const sub of payload?.subcategories ?? []) {
+      const name = sub.name.trim();
+      if (name && !seen.has(name)) seen.set(name, sub.id);
+    }
+    return Array.from(seen, ([name, id]) => ({ name, id }));
+  }, [payload]);
+
+  // صف منتجات لكل قسم رئيسي (حتى 3 أقسام × 8 منتجات) للتمرير الأفقي في الرئيسية
+  const categoryRows = useMemo(() => {
+    const all = payload?.products ?? [];
+    return (payload?.categories ?? [])
+      .slice(0, 3)
+      .map((category) => ({
+        ...category,
+        products: all.filter((product) => product.categoryId === category.id).slice(0, 8),
+      }))
+      .filter((row) => row.products.length > 0);
+  }, [payload]);
+
+  const recentProducts = useMemo(() => {
+    const all = payload?.products ?? [];
+    return recentIds
+      .map((id) => all.find((product) => product.id === id))
+      .filter((product): product is CatalogProduct => Boolean(product))
+      .slice(0, 5);
+  }, [payload, recentIds]);
+
+  const runSlideAction = (action: 'scroll' | 'chat' | 'offers') => {
+    if (action === 'chat') router.push('/chat');
+    else if (action === 'offers') offersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else scrollToProducts();
+  };
+
+  // فهرس الشريحة الضمني — يبقى ضمن النطاق إذا تغيّر عدد الشرائح (دخول/خروج عروض)
+  const activeSlide = slide % Math.max(slides.length, 1);
+
+  // تقدّم شرائح البانر الترحيبي تلقائياً كل 6 ثوانٍ
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const timer = setInterval(() => setSlide((current) => (current + 1) % slides.length), 6000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slides.length]);
 
   const selected = selectedId ? (payload?.products.find((product) => product.id === selectedId) ?? null) : null;
   const selectedCategory = selected ? categories.find((category) => category.id === selected.categoryId) : null;
@@ -461,6 +606,14 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
 
   return (
     <div className="min-h-screen text-slate-800" style={{ background: PAGE_BG }}>
+      {/* الأنيميشن المخصص: دخول الشرائح والشريط المتحرك */}
+      <style>{`
+        @keyframes shop-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shop-marquee { from { transform: translateX(0); } to { transform: translateX(50%); } }
+        .animate-shopfade { animation: shop-fade .6s ease both; }
+        .animate-shopmarquee { animation: shop-marquee 28s linear infinite; }
+      `}</style>
+
       {/* الشريط العلوي الرفيع */}
       <div className="bg-slate-900 text-slate-300">
         <div className="max-w-7xl mx-auto px-4 h-9 flex items-center justify-between text-xs">
@@ -559,34 +712,93 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
         </nav>
       </header>
 
-      {/* البانر الترحيبي */}
+      {/* شريط العروض المتحرك أسفل الترويسة — يظهر عند وجود عروض نشطة */}
+      {offers.length > 0 && (
+        <div className="overflow-hidden" style={{ background: PURPLE_DARK }}>
+          <div className="animate-shopmarquee flex w-max py-2">
+            {[0, 1].map((copy) => (
+              <div key={copy} className="flex shrink-0 items-center gap-10 px-5 text-xs font-semibold text-white" dir="rtl">
+                {offers.map((offer) => (
+                  <span key={`${offer.id}-${copy}`} className="flex items-center gap-2 whitespace-nowrap">
+                    <Percent className="w-3.5 h-3.5" aria-hidden="true" />
+                    {offer.title} — {offer.discountType === 'percent' ? `خصم ${offer.discountValue}٪` : `خصم ${formatPrice(offer.discountValue)} ل.س`}
+                  </span>
+                ))}
+                <span className="whitespace-nowrap text-white/70">الأسعار والتوفر محدّثان لحظياً من المحل</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* البانر الترحيبي — سلايدر دوّار على غرار قوالب Molla */}
       <section className="relative overflow-hidden" style={{ background: `linear-gradient(120deg, ${PURPLE_DARK}, ${PURPLE} 55%, #9a8af2)` }}>
         <div aria-hidden="true" className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-white/10" />
         <div aria-hidden="true" className="absolute -bottom-32 left-1/3 w-96 h-96 rounded-full bg-white/5" />
         <div aria-hidden="true" className="absolute top-10 right-10 w-24 h-24 rounded-full border-8 border-white/10" />
-        <div className="relative max-w-7xl mx-auto px-4 py-14 md:py-20 text-center text-white">
-          <p className="text-sm font-semibold tracking-wide text-white/80 mb-3">أسعار وتوفر مباشرة من المحل</p>
-          <h1 className="text-3xl md:text-5xl font-bold leading-tight mb-4">{payload?.storeName ?? 'قطنيات وبشاكير سلطان'}</h1>
-          <p className="text-white/80 max-w-xl mx-auto mb-8 leading-relaxed">
-            تصفح الكتالوج كاملاً بألوانه ومقاساته وأسعاره المحدّثة لحظياً، وعند ما يعجبك كلمنا بالمحادثة ونحجزه لك.
-          </p>
-          <div className="flex items-center justify-center gap-3 flex-wrap">
+        <div className="relative max-w-7xl mx-auto px-4 py-14 md:py-20 text-center text-white grid min-h-[300px] md:min-h-[320px]">
+          {slides.map((item, index) => (
+            <div
+              key={item.key}
+              className={`col-start-1 row-start-1 transition-opacity duration-700 ${
+                index === activeSlide ? 'animate-shopfade opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+            >
+              <p className="text-sm font-semibold tracking-wide text-white/80 mb-3">{item.eyebrow}</p>
+              <h1 className="text-3xl md:text-5xl font-bold leading-tight mb-4">{item.title}</h1>
+              <p className="text-white/80 max-w-xl mx-auto mb-8 leading-relaxed">{item.text}</p>
+              <div className="flex items-center justify-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => runSlideAction(item.primary.action)}
+                  className="bg-white font-semibold text-sm px-7 py-3.5 rounded-full transition-transform hover:scale-[1.03]"
+                  style={{ color: PURPLE_DARK }}
+                >
+                  {item.primary.label}
+                </button>
+                <Link
+                  href="/chat"
+                  className="border border-white/60 text-white font-semibold text-sm px-7 py-3.5 rounded-full transition-colors hover:bg-white/10"
+                >
+                  تواصل معنا
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* أسهم التنقل والنقاط */}
+        {slides.length > 1 && (
+          <>
             <button
               type="button"
-              onClick={scrollToProducts}
-              className="bg-white font-semibold text-sm px-7 py-3.5 rounded-full transition-transform hover:scale-[1.03]"
-              style={{ color: PURPLE_DARK }}
+              onClick={() => setSlide((slide - 1 + slides.length) % slides.length)}
+              aria-label="الشريحة السابقة"
+              className="hidden md:grid absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25 transition-colors"
             >
-              تسوق الآن
+              <ChevronRight className="w-5 h-5" aria-hidden="true" />
             </button>
-            <Link
-              href="/chat"
-              className="border border-white/60 text-white font-semibold text-sm px-7 py-3.5 rounded-full transition-colors hover:bg-white/10"
+            <button
+              type="button"
+              onClick={() => setSlide((slide + 1) % slides.length)}
+              aria-label="الشريحة التالية"
+              className="hidden md:grid absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25 transition-colors"
             >
-              تواصل معنا
-            </Link>
-          </div>
-        </div>
+              <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+            </button>
+            <div className="absolute bottom-4 inset-x-0 flex justify-center gap-2">
+              {slides.map((item, index) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setSlide(index)}
+                  aria-label={`الشريحة ${index + 1}`}
+                  className="h-2 rounded-full transition-all"
+                  style={{ width: index === activeSlide ? 22 : 8, background: index === activeSlide ? '#fff' : 'rgba(255,255,255,0.45)' }}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       <main className="max-w-7xl mx-auto px-4">
@@ -632,6 +844,84 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
                     <p className="text-xs text-slate-400 mt-0.5">{productsOfCategory.get(category.id) ?? 0} منتج</p>
                   </div>
                 </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* تسوق حسب الشركة — بلاطات الشركات (الأقسام الفرعية) للتمرير الأفقي */}
+        {isHome && brandTiles.length > 0 && (
+          <section className="pb-12">
+            <div className="mb-5">
+              <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                شركاؤنا
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900">تسوق حسب الشركة</h2>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {brandTiles.map((brand, index) => (
+                <button
+                  key={brand.id}
+                  type="button"
+                  onClick={() => router.push(`/shop?sub=${encodeURIComponent(brand.id)}`)}
+                  className="shrink-0 flex items-center gap-3 bg-white border px-5 py-3.5 transition-shadow hover:shadow-md"
+                  style={{ borderColor: LINE }}
+                >
+                  <span
+                    className="w-9 h-9 rounded-full grid place-items-center text-white text-sm font-bold shrink-0"
+                    style={{ background: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length] }}
+                  >
+                    {brand.name.charAt(0)}
+                  </span>
+                  <span className="font-semibold text-slate-800 whitespace-nowrap">{brand.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* العروض النشطة — بطاقات الخصم على غرار قوالب Molla */}
+        {isHome && offers.length > 0 && (
+          <section ref={offersSectionRef} className="pb-12 scroll-mt-32">
+            <div className="flex items-end justify-between mb-6">
+              <div>
+                <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                  لفترة محدودة
+                </p>
+                <h2 className="text-2xl font-bold text-slate-900">عروضنا الحالية</h2>
+              </div>
+              <Link
+                href="/chat"
+                className="flex items-center gap-1 text-sm font-semibold transition-opacity hover:opacity-80"
+                style={{ color: PURPLE }}
+              >
+                اطلب عرضك بالمحادثة
+                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+              </Link>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {offers.map((offer) => (
+                <div key={offer.id} className="relative bg-white border overflow-hidden p-6" style={{ borderColor: LINE }}>
+                  <span
+                    className="inline-block text-xs font-bold text-white px-3 py-1.5 rounded-full mb-4"
+                    style={{ background: PURPLE }}
+                  >
+                    {offer.discountType === 'percent' ? `خصم ${offer.discountValue}٪` : `خصم ${formatPrice(offer.discountValue)} ل.س`}
+                  </span>
+                  <h3 className="font-bold text-slate-900 mb-1.5">{offer.title}</h3>
+                  {offer.description && <p className="text-sm text-slate-500 leading-relaxed mb-3">{offer.description}</p>}
+                  <p className="text-xs text-slate-400 mb-5">
+                    {offer.itemsCount > 0 ? `ربطة من ${offer.itemsCount} أصناف — تُضاف بنودها للفاتورة بسعر العرض` : 'خصم على الفاتورة'}
+                  </p>
+                  <Link
+                    href="/chat"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-white px-5 py-2.5 rounded-full transition-opacity hover:opacity-90"
+                    style={{ background: PURPLE }}
+                  >
+                    <MessageCircle className="w-4 h-4" aria-hidden="true" />
+                    اطلب العرض
+                  </Link>
+                </div>
               ))}
             </div>
           </section>
@@ -827,6 +1117,45 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           )}
         </section>
 
+        {/* صف منتجات لكل قسم رئيسي — تمرير أفقي على غرار Molla */}
+        {isHome &&
+          categoryRows.map((row) => (
+            <section key={row.id} className="pb-12">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-xl font-bold text-slate-900">{row.name}</h2>
+                <Link
+                  href={`/shop?cat=${encodeURIComponent(row.id)}`}
+                  className="flex items-center gap-1 text-sm font-semibold transition-opacity hover:opacity-80"
+                  style={{ color: PURPLE }}
+                >
+                  عرض الكل
+                  <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+                </Link>
+              </div>
+              <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {row.products.map((product) => (
+                  <div key={product.id} className="w-44 sm:w-52 shrink-0">
+                    {renderProductCard(product)}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+
+        {/* شوهد مؤخراً — من جهاز العميل نفسه */}
+        {isHome && recentProducts.length > 0 && (
+          <section className="pb-12">
+            <h2 className="text-xl font-bold text-slate-900 mb-5">شوهد مؤخراً</h2>
+            <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {recentProducts.map((product) => (
+                <div key={product.id} className="w-44 sm:w-52 shrink-0">
+                  {renderProductCard(product)}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* صناديق المزايا */}
         <section className="border-t py-10" style={{ borderColor: LINE }}>
           <div className="grid sm:grid-cols-3 gap-6">
@@ -933,6 +1262,29 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           </div>
         </div>
       </footer>
+
+      {/* زر المحادثة العائم — أهم زر في المتجر لأن الطلب كله عبره */}
+      <Link
+        href="/chat"
+        aria-label="محادثة المتجر"
+        className="fixed bottom-5 left-5 z-40 w-14 h-14 rounded-full grid place-items-center text-white shadow-lg transition-transform hover:scale-105"
+        style={{ background: PURPLE }}
+      >
+        <MessageCircle className="w-6 h-6" aria-hidden="true" />
+      </Link>
+
+      {/* زر العودة للأعلى — يظهر بعد تمرير بعيد */}
+      {showBackToTop && (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="العودة للأعلى"
+          className="fixed bottom-5 right-5 z-40 w-11 h-11 rounded-full grid place-items-center bg-white border shadow-lg text-slate-500 transition-colors hover:text-slate-900"
+          style={{ borderColor: LINE }}
+        >
+          <ArrowUp className="w-5 h-5" aria-hidden="true" />
+        </button>
+      )}
 
       {/* نافذة العرض السريع */}
       {selected && (
