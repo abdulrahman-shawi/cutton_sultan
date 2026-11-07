@@ -64,7 +64,8 @@ export async function GET() {
     })),
   }));
 
-  // العروض النشطة للعرض في واجهة المتجر: الاسم والوصف وقيمة الخصم وعدد بنود الربطة فقط
+  // العروض النشطة للعرض في واجهة المتجر: الاسم والوصف وقيمة الخصم وبنود الربطة
+  // (اسم الصنف والموديل واللون/مقاس وكميته وسعره) — دون معرفات داخلية
   const activeOffers = (offers ?? [])
     .filter((offer) => offer.active)
     .map((offer) => ({
@@ -73,7 +74,14 @@ export async function GET() {
       description: offer.description ?? '',
       discountType: offer.discountType === 'fixed' ? ('fixed' as const) : ('percent' as const),
       discountValue: offer.discountValue,
-      itemsCount: (offer.items ?? []).length,
+      items: (offer.items ?? []).map((item) => ({
+        name: item.productName,
+        model: item.modelNumber ?? '',
+        variant: item.variant ?? '',
+        quantity: item.quantity,
+        price: item.price,
+        currency: item.currency === 'USD' ? ('USD' as const) : ('SYP' as const),
+      })),
     }));
 
   return NextResponse.json({

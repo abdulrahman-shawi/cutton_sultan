@@ -63,7 +63,37 @@ interface ShopOffer {
   description: string;
   discountType: 'percent' | 'fixed';
   discountValue: number;
-  itemsCount: number;
+  items: ShopOfferItem[];
+}
+
+interface ShopOfferItem {
+  name: string;
+  model: string;
+  variant: string;
+  quantity: number;
+  price: number;
+  currency: 'SYP' | 'USD';
+}
+
+// حساب أسعار العرض بالليرة السورية: إجمالي البنود (بتحويل الدولار) ثم خصم النسبة أو المبلغ الثابت
+function offerPricing(offer: ShopOffer, sypRate: number): { original: number; discount: number; final: number } {
+  let total = 0;
+  for (const item of offer.items) {
+    const unitSyp = item.currency === 'USD' ? (sypRate > 0 ? item.price * sypRate : 0) : item.price;
+    total += unitSyp * item.quantity;
+  }
+  total = Math.round(total);
+  const discount =
+    offer.discountType === 'percent'
+      ? Math.round((total * Math.min(Math.max(offer.discountValue, 0), 100)) / 100)
+      : Math.min(Math.max(offer.discountValue, 0), total);
+  return { original: total, discount, final: Math.max(total - discount, 0) };
+}
+
+// رسالة الاستفسار الجاهزة التي تُملأ في محادثة المتجر عند طلب العرض
+function offerInquiryMessage(offer: ShopOffer): string {
+  const discountText = offer.discountType === 'percent' ? `خصم ${offer.discountValue}٪` : `خصم ${formatPrice(offer.discountValue)} ل.س`;
+  return `مرحباً، أريد الاستفسار عن العرض التي اسمها «${offer.title}» (${discountText})`;
 }
 
 // تبويبات قسم المنتجات في الصفحة الرئيسية على غرار ثيم Molla
@@ -244,6 +274,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
   const [slide, setSlide] = useState(0);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  const [viewedOfferId, setViewedOfferId] = useState<string | null>(null);
   const productsSectionRef = useRef<HTMLElement>(null);
   const offersSectionRef = useRef<HTMLElement>(null);
 
@@ -304,13 +335,13 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // قفل تمرير الصفحة عند فتح نافذة العرض السريع
+  // قفل تمرير الصفحة عند فتح نافذة العرض السريع أو نافذة العرض (عرض تخفيضات)
   useEffect(() => {
-    document.body.style.overflow = selectedId ? 'hidden' : '';
+    document.body.style.overflow = selectedId || viewedOfferId ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [selectedId]);
+  }, [selectedId, viewedOfferId]);
 
   // عند فتح نافذة منتج: تحديد أول قسم فرعي ولون ومقاس تلقائياً فيظهر السعر والتوفر فوراً،
   // وتسجيل المنتج في «شوهد مؤخراً»
@@ -901,7 +932,13 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {offers.map((offer) => (
-                <div key={offer.id} className="relative bg-white border overflow-hidden p-6" style={{ borderColor: LINE }}>
+                <button
+                  key={offer.id}
+                  type="button"
+                  onClick={() => setViewedOfferId(offer.id)}
+                  className="relative bg-white border overflow-hidden p-6 text-right transition-shadow hover:shadow-lg"
+                  style={{ borderColor: LINE }}
+                >
                   <span
                     className="inline-block text-xs font-bold text-white px-3 py-1.5 rounded-full mb-4"
                     style={{ background: PURPLE }}
@@ -910,18 +947,10 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
                   </span>
                   <h3 className="font-bold text-slate-900 mb-1.5">{offer.title}</h3>
                   {offer.description && <p className="text-sm text-slate-500 leading-relaxed mb-3">{offer.description}</p>}
-                  <p className="text-xs text-slate-400 mb-5">
-                    {offer.itemsCount > 0 ? `ربطة من ${offer.itemsCount} أصناف — تُضاف بنودها للفاتورة بسعر العرض` : 'خصم على الفاتورة'}
+                  <p className="text-xs text-slate-400">
+                    {offer.items.length > 0 ? `ربطة من ${offer.items.length} أصناف — اضغط لعرض التفاصيل والسعر` : 'خصم على الفاتورة — اضغط للتفاصيل'}
                   </p>
-                  <Link
-                    href="/chat"
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-white px-5 py-2.5 rounded-full transition-opacity hover:opacity-90"
-                    style={{ background: PURPLE }}
-                  >
-                    <MessageCircle className="w-4 h-4" aria-hidden="true" />
-                    اطلب العرض
-                  </Link>
-                </div>
+                </button>
               ))}
             </div>
           </section>
