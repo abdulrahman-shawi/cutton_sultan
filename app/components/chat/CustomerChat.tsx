@@ -87,6 +87,16 @@ export default function CustomerChat() {
     });
   }, []);
 
+  // رسالة مُعبّأة مسبقاً قادمة من صفحات المتجر — مثل زر «اطلب العرض» الذي يمرر ?m=نص الاستفسار
+  useEffect(() => {
+    try {
+      const preset = new URLSearchParams(window.location.search).get('m');
+      if (preset) setInput(preset);
+    } catch {
+      // لا بارامترات مقروءة
+    }
+  }, []);
+
   // تحميل محادثة سابقة إن وُجدت
   useEffect(() => {
     if (!guest?.conversationId || startedRef.current) return;

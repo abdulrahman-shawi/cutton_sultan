@@ -104,6 +104,13 @@ const HOME_TABS: { key: HomeTab; label: string }[] = [
   { key: 'available', label: 'متوفر الآن' },
 ];
 
+// تبويبا قسم «تسوق حسب» في الرئيسية: بطاقات الأقسام أو بلاطات الشركات
+type BrowseTab = 'category' | 'brand';
+const BROWSE_TABS: { key: BrowseTab; label: string }[] = [
+  { key: 'category', label: 'حسب القسم' },
+  { key: 'brand', label: 'حسب الشركة' },
+];
+
 const PURPLE = '#7666e8';
 const PURPLE_DARK = '#5b4bd1';
 const PAGE_BG = '#f4f5f8';
@@ -414,6 +421,8 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
   // خمسة منتجات للصفحة الرئيسية حسب التبويب النشط:
   // أحدث = ترتيب الكتالوج (الأحدث مضافاً أولاً) · الأكثر مبيعاً = ترتيب المبيعات الفعلي · متوفر = ذو رصيد حالي
   const [homeTab, setHomeTab] = useState<HomeTab>('new');
+  // التبويب النشط في قسم «تسوق حسب» بالرئيسية — بطاقات الأقسام أو بلاطات الشركات
+  const [browseTab, setBrowseTab] = useState<BrowseTab>('category');
   const featuredProducts = useMemo(() => {
     const all = payload?.products ?? [];
     if (homeTab === 'available') return all.filter(isProductAvailable).slice(0, 5);
@@ -542,7 +551,65 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
   const sizeHasStock = (size: string) =>
     Boolean(selected?.entries.some((entry) => entry.size.trim() === size && entry.quantity > 0));
 
+  // العرض (التخفيض) المفتوح في نافذة التفاصيل وأسعاره المحسوبة بالليرة
+  const viewedOffer = viewedOfferId ? (offers.find((offer) => offer.id === viewedOfferId) ?? null) : null;
+  const viewedPricing = viewedOffer ? offerPricing(viewedOffer, sypRate) : null;
+
   const categoryName = (id: string) => categories.find((category) => category.id === id)?.name ?? '';
+
+  // شبكة بطاقات الأقسام — تُستخدم في الرئيسية (تاب القسم) وفي صفحة الكتالوج
+  const categoryCardsGrid = categories.length > 0 && (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      {categories.map((category, index) => (
+        <button
+          key={category.id}
+          type="button"
+          onClick={() => pickCategory(category.id)}
+          className="group text-right bg-white border overflow-hidden transition-shadow hover:shadow-lg"
+          style={{ borderColor: LINE }}
+        >
+          <div
+            className="h-24 grid place-items-center"
+            style={{ background: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length] }}
+          >
+            <span className="text-3xl font-bold text-white/95">{category.name.charAt(0)}</span>
+          </div>
+          <div className="p-3.5">
+            <h3 className="font-semibold text-slate-900 group-hover:opacity-80 transition-opacity">
+              {category.name}
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">{productsOfCategory.get(category.id) ?? 0} منتج</p>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+
+  // بلاطات الشركات (الأقسام الفرعية) للتمرير الأفقي — تُستخدم في الرئيسية (تاب الشركة)
+  const brandTilesRow = brandTiles.length > 0 && (
+    <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {brandTiles.map((brand, index) => (
+        <button
+          key={brand.id}
+          type="button"
+          onClick={() => router.push(`/shop?sub=${encodeURIComponent(brand.id)}`)}
+          className="shrink-0 flex items-center gap-3 bg-white border px-5 py-3.5 transition-shadow hover:shadow-md"
+          style={{ borderColor: LINE }}
+        >
+          <span
+            className="w-9 h-9 rounded-full grid place-items-center text-white text-sm font-bold shrink-0"
+            style={{ background: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length] }}
+          >
+            {brand.name.charAt(0)}
+          </span>
+          <span className="font-semibold text-slate-800 whitespace-nowrap">{brand.name}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  // في الرئيسية: عند توفر الأقسام والشركات معاً يجمعهما قسم واحد بتبويبين كاملين
+  const showBrowseTabs = isHome && Boolean(categoryCardsGrid) && Boolean(brandTilesRow);
 
   // بطاقة منتج موحدة — تُستخدم في الرئيسية (5 منتجات) وفي الكتالوج الكامل
   const renderProductCard = (product: CatalogProduct) => {
@@ -833,82 +900,80 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
       </section>
 
       <main className="max-w-7xl mx-auto px-4">
-        {/* بطاقات الأقسام */}
-        {categories.length > 0 && (
+        {/* تسوق حسب القسم / الشركة — في الرئيسية تابان كاملان عند توفر الفئتين، وفي الكتالوج بطاقات الأقسام فقط */}
+        {showBrowseTabs ? (
           <section className="py-12">
-            <div className="flex items-end justify-between mb-6">
+            <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
               <div>
                 <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
-                  الأقسام
+                  تسوق حسب
                 </p>
-                <h2 className="text-2xl font-bold text-slate-900">تسوق حسب القسم</h2>
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {browseTab === 'category' ? 'تسوق حسب القسم' : 'تسوق حسب الشركة'}
+                </h2>
               </div>
-              <button
-                type="button"
-                onClick={() => pickCategory('all')}
-                className="flex items-center gap-1 text-sm font-medium transition-colors hover:opacity-80"
-                style={{ color: PURPLE }}
+              {/* التابان: حسب القسم / حسب الشركة */}
+              <div
+                className="flex gap-6 border-b overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                style={{ borderColor: LINE }}
               >
-                عرض الكل
-                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {categories.map((category, index) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  onClick={() => pickCategory(category.id)}
-                  className="group text-right bg-white border overflow-hidden transition-shadow hover:shadow-lg"
-                  style={{ borderColor: LINE }}
-                >
-                  <div
-                    className="h-24 grid place-items-center"
-                    style={{ background: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length] }}
+                {BROWSE_TABS.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setBrowseTab(tab.key)}
+                    className="pb-2.5 -mb-px border-b-2 text-sm font-semibold transition-colors whitespace-nowrap"
+                    style={{
+                      borderColor: browseTab === tab.key ? PURPLE : 'transparent',
+                      color: browseTab === tab.key ? PURPLE : '#6b6d84',
+                    }}
                   >
-                    <span className="text-3xl font-bold text-white/95">{category.name.charAt(0)}</span>
-                  </div>
-                  <div className="p-3.5">
-                    <h3 className="font-semibold text-slate-900 group-hover:opacity-80 transition-opacity">
-                      {category.name}
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{productsOfCategory.get(category.id) ?? 0} منتج</p>
-                  </div>
-                </button>
-              ))}
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
+            {browseTab === 'category' ? categoryCardsGrid : brandTilesRow}
           </section>
-        )}
+        ) : (
+          <>
+            {/* بطاقات الأقسام */}
+            {categoryCardsGrid && (
+              <section className="py-12">
+                <div className="flex items-end justify-between mb-6">
+                  <div>
+                    <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                      الأقسام
+                    </p>
+                    <h2 className="text-2xl font-bold text-slate-900">تسوق حسب القسم</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => pickCategory('all')}
+                    className="flex items-center gap-1 text-sm font-medium transition-colors hover:opacity-80"
+                    style={{ color: PURPLE }}
+                  >
+                    عرض الكل
+                    <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </div>
+                {categoryCardsGrid}
+              </section>
+            )}
 
-        {/* تسوق حسب الشركة — بلاطات الشركات (الأقسام الفرعية) للتمرير الأفقي */}
-        {isHome && brandTiles.length > 0 && (
-          <section className="pb-12">
-            <div className="mb-5">
-              <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
-                شركاؤنا
-              </p>
-              <h2 className="text-2xl font-bold text-slate-900">تسوق حسب الشركة</h2>
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {brandTiles.map((brand, index) => (
-                <button
-                  key={brand.id}
-                  type="button"
-                  onClick={() => router.push(`/shop?sub=${encodeURIComponent(brand.id)}`)}
-                  className="shrink-0 flex items-center gap-3 bg-white border px-5 py-3.5 transition-shadow hover:shadow-md"
-                  style={{ borderColor: LINE }}
-                >
-                  <span
-                    className="w-9 h-9 rounded-full grid place-items-center text-white text-sm font-bold shrink-0"
-                    style={{ background: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length] }}
-                  >
-                    {brand.name.charAt(0)}
-                  </span>
-                  <span className="font-semibold text-slate-800 whitespace-nowrap">{brand.name}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+            {/* تسوق حسب الشركة — بلاطات الشركات (الأقسام الفرعية) للتمرير الأفقي */}
+            {isHome && brandTilesRow && (
+              <section className="pb-12">
+                <div className="mb-5">
+                  <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                    شركاؤنا
+                  </p>
+                  <h2 className="text-2xl font-bold text-slate-900">تسوق حسب الشركة</h2>
+                </div>
+                {brandTilesRow}
+              </section>
+            )}
+          </>
         )}
 
         {/* العروض النشطة — بطاقات الخصم على غرار قوالب Molla */}
@@ -1313,6 +1378,110 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
         >
           <ArrowUp className="w-5 h-5" aria-hidden="true" />
         </button>
+      )}
+
+      {/* نافذة تفاصيل العرض: محتويات الربطة مع السعر الأصلي والسعر بعد الخصم */}
+      {viewedOffer && viewedPricing && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={() => setViewedOfferId(null)} />
+          <div role="dialog" aria-modal="true" className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-white shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setViewedOfferId(null)}
+              aria-label="إغلاق"
+              className="absolute top-3 left-3 z-10 p-2 rounded-full bg-white border shadow-sm transition-colors hover:text-slate-900"
+              style={{ borderColor: LINE, color: '#9aa0b0' }}
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+            <div className="p-6 md:p-8">
+              <span
+                className="inline-block text-xs font-bold text-white px-3 py-1.5 rounded-full"
+                style={{ background: PURPLE }}
+              >
+                {viewedOffer.discountType === 'percent'
+                  ? `خصم ${viewedOffer.discountValue}٪`
+                  : `خصم ${formatPrice(viewedOffer.discountValue)} ل.س`}
+              </span>
+              <h2 className="text-xl font-bold text-slate-900 mt-3 mb-1">{viewedOffer.title}</h2>
+              {viewedOffer.description && (
+                <p className="text-sm text-slate-500 leading-relaxed">{viewedOffer.description}</p>
+              )}
+
+              {viewedOffer.items.length > 0 ? (
+                <>
+                  <h3 className="text-sm font-bold text-slate-900 mt-6 mb-2">
+                    محتويات العرض
+                    <span className="font-normal text-slate-400"> ({viewedOffer.items.length})</span>
+                  </h3>
+                  <ul className="divide-y border rounded-xl overflow-hidden bg-white mb-5" style={{ borderColor: LINE }}>
+                    {viewedOffer.items.map((item, index) => {
+                      const unitSyp = Math.round(
+                        item.currency === 'USD' ? item.price * (sypRate > 0 ? sypRate : 0) : item.price
+                      );
+                      return (
+                        <li key={index} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 truncate">{item.name}</p>
+                            {[item.model, item.variant].filter(Boolean).length > 0 && (
+                              <p className="text-xs text-slate-400 mt-0.5" dir="ltr">
+                                {[item.model, item.variant].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
+                          </div>
+                          <p className="text-slate-600 whitespace-nowrap text-xs">
+                            {item.quantity} × {formatPrice(unitSyp)} ل.س
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {/* السعر الأصلي والنهائي بعد الخصم — محسوب مباشرة من بنود الربطة */}
+                  <div
+                    className="rounded-xl px-4 py-4 mb-6 space-y-2"
+                    style={{ background: `${PURPLE}0d`, border: `1px solid ${LINE}` }}
+                  >
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">السعر الأصلي</span>
+                      <span className="text-slate-400 line-through">{formatPrice(viewedPricing.original)} ل.س</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">قيمة الخصم</span>
+                      <span className="font-semibold text-emerald-600">
+                        - {formatPrice(viewedPricing.discount)} ل.س
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: LINE }}>
+                      <span className="font-bold text-slate-900">السعر بعد الخصم</span>
+                      <span className="text-lg font-bold" style={{ color: PURPLE_DARK }}>
+                        {formatPrice(viewedPricing.final)} ل.س
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500 border rounded-xl px-4 py-5 my-5" style={{ borderColor: LINE, borderStyle: 'dashed' }}>
+                  {viewedOffer.discountType === 'percent'
+                    ? `خصم ${viewedOffer.discountValue}٪ على قيمة الفاتورة — اسألنا عن تفاصيله بالمحادثة.`
+                    : `خصم ${formatPrice(viewedOffer.discountValue)} ل.س على قيمة الفاتورة — اسألنا عن تفاصيله بالمحادثة.`}
+                </p>
+              )}
+
+              {/* زر الطلب: ينقل للمحادثة وقد ملأنا رسالة الاستفسار تلقائياً باسم العرض */}
+              <Link
+                href={`/chat?m=${encodeURIComponent(offerInquiryMessage(viewedOffer))}`}
+                className="flex items-center justify-center gap-2 w-full py-3.5 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: PURPLE }}
+              >
+                <MessageCircle className="w-4 h-4" aria-hidden="true" />
+                اطلب العرض بالمحادثة
+              </Link>
+              <p className="text-[11px] text-slate-400 mt-2.5 text-center">
+                سنفتح محادثة المتجر وقد كتبنا لك رسالة الاستفسار عن هذا العرض تلقائياً — أرسلها كما هي أو عدّلها.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* نافذة العرض السريع */}
