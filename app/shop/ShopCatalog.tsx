@@ -363,14 +363,6 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
 
   const categories = payload?.categories ?? [];
 
-  const productsOfCategory = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const product of payload?.products ?? []) {
-      counts.set(product.categoryId, (counts.get(product.categoryId) ?? 0) + 1);
-    }
-    return counts;
-  }, [payload]);
-
   const subcategoriesOfCategory = useMemo(() => {
     if (categoryId === 'all') return [];
     return (payload?.subcategories ?? []).filter((sub) => sub.categoryId === categoryId);
@@ -557,29 +549,24 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
 
   const categoryName = (id: string) => categories.find((category) => category.id === id)?.name ?? '';
 
-  // شبكة بطاقات الأقسام — تُستخدم في الرئيسية (تاب القسم) وفي صفحة الكتالوج
+  // بلاطات الأقسام — نفس أسلوب بلاطات الشركات تماماً: تمرير أفقي وبلاطة بيضاء بدائرة متدرجة
   const categoryCardsGrid = categories.length > 0 && (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+    <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {categories.map((category, index) => (
         <button
           key={category.id}
           type="button"
           onClick={() => pickCategory(category.id)}
-          className="group text-right bg-white border overflow-hidden transition-shadow hover:shadow-lg"
+          className="shrink-0 flex items-center gap-3 bg-white border px-5 py-3.5 transition-shadow hover:shadow-md"
           style={{ borderColor: LINE }}
         >
-          <div
-            className="h-24 grid place-items-center"
+          <span
+            className="w-9 h-9 rounded-full grid place-items-center text-white text-sm font-bold shrink-0"
             style={{ background: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length] }}
           >
-            <span className="text-3xl font-bold text-white/95">{category.name.charAt(0)}</span>
-          </div>
-          <div className="p-3.5">
-            <h3 className="font-semibold text-slate-900 group-hover:opacity-80 transition-opacity">
-              {category.name}
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">{productsOfCategory.get(category.id) ?? 0} منتج</p>
-          </div>
+            {category.name.charAt(0)}
+          </span>
+          <span className="font-semibold text-slate-800 whitespace-nowrap">{category.name}</span>
         </button>
       ))}
     </div>
