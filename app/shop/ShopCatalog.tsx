@@ -474,18 +474,6 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     return Array.from(seen, ([name, id]) => ({ name, id }));
   }, [payload]);
 
-  // صف منتجات لكل قسم رئيسي (حتى 3 أقسام × 8 منتجات) للتمرير الأفقي في الرئيسية
-  const categoryRows = useMemo(() => {
-    const all = payload?.products ?? [];
-    return (payload?.categories ?? [])
-      .slice(0, 3)
-      .map((category) => ({
-        ...category,
-        products: all.filter((product) => product.categoryId === category.id).slice(0, 8),
-      }))
-      .filter((row) => row.products.length > 0);
-  }, [payload]);
-
   const recentProducts = useMemo(() => {
     const all = payload?.products ?? [];
     return recentIds
@@ -1197,31 +1185,6 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
             </div>
           )}
         </section>
-
-        {/* صف منتجات لكل قسم رئيسي — تمرير أفقي على غرار Molla */}
-        {isHome &&
-          categoryRows.map((row) => (
-            <section key={row.id} className="pb-12">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-xl font-bold text-slate-900">{row.name}</h2>
-                <Link
-                  href={`/shop?cat=${encodeURIComponent(row.id)}`}
-                  className="flex items-center gap-1 text-sm font-semibold transition-opacity hover:opacity-80"
-                  style={{ color: PURPLE }}
-                >
-                  عرض الكل
-                  <ChevronLeft className="w-4 h-4" aria-hidden="true" />
-                </Link>
-              </div>
-              <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {row.products.map((product) => (
-                  <div key={product.id} className="w-44 sm:w-52 shrink-0">
-                    {renderProductCard(product)}
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
 
         {/* شوهد مؤخراً — من جهاز العميل نفسه */}
         {isHome && recentProducts.length > 0 && (
