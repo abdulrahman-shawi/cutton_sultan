@@ -178,6 +178,8 @@ export default function OfferModal({ initial, onClose, onSave }: OfferModalProps
     if (discountType === 'percent' && value > 100) return setError('نسبة الخصم لا يمكن أن تتجاوز 100٪');
     onSave({
       ...(initial as Offer),
+      id: initial?.id ?? crypto.randomUUID(),
+      createdAt: initial?.createdAt ?? Date.now(),
       title: title.trim(),
       description: description.trim(),
       items: cleanItems.map((item) => ({

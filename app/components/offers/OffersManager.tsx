@@ -13,7 +13,13 @@ function loadOffers(): Offer[] {
     const raw = window.localStorage.getItem(OFFERS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as Offer[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    // سجلات قديمة أُنشئت بلا معرف — نمنحها معرفاً وتاريخاً لتعمل المزامنة ونافذة العرض في الواجهة
+    return (parsed as Offer[]).map((offer) => ({
+      ...offer,
+      id: typeof offer.id === 'string' && offer.id ? offer.id : crypto.randomUUID(),
+      createdAt: typeof offer.createdAt === 'number' ? offer.createdAt : Date.now(),
+    }));
   } catch {
     return [];
   }
