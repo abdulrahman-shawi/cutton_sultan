@@ -34,6 +34,7 @@ export interface ColumnDef<TData> {
   cell?: (row: TData, index: number) => React.ReactNode;
   sortable?: boolean;
   sortValue?: (row: TData) => string | number;
+  searchValue?: (row: TData) => string | number;
   align?: ColumnAlign;
   className?: string;
   headerClassName?: string;
@@ -112,8 +113,11 @@ export function DataTable<TData>({
     const normalizedQuery = deferredQuery.trim().toLowerCase();
     return data.filter((row) =>
       columns.some((column) => {
-        if (!column.accessorKey) return false;
-        const value = row[column.accessorKey];
+        const value = column.searchValue
+          ? column.searchValue(row)
+          : column.accessorKey
+            ? row[column.accessorKey]
+            : null;
         return value != null && String(value).toLowerCase().includes(normalizedQuery);
       })
     );
