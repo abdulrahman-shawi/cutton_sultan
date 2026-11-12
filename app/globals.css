@@ -9,6 +9,21 @@
   --muted: #9294a8;
   --line: #ececf2;
   --purple: #7666e8;
+
+  /* رموز التصميم لمكوّنات الواجهة المشتركة (shadcn-style) */
+  --card: 0 0% 100%;
+  --card-foreground: 233 21% 17%;
+  --primary: 248 73% 66%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 248 100% 96%;
+  --secondary-foreground: 248 60% 56%;
+  --muted-bg: 240 22% 96%;
+  --accent: 248 100% 98%;
+  --accent-foreground: 248 60% 56%;
+  --destructive: 0 72% 51%;
+  --border: 240 20% 93%;
+  --input: 240 14% 91%;
+  --ring: 248 73% 66%;
 }
 
 * {
