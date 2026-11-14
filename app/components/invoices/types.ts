@@ -8,6 +8,16 @@ export type PaymentStatus = 'مدفوعة' | 'مدفوعة جزئياً' | 'غي
 export const INVOICE_TYPES: InvoiceType[] = ['مقبوضات', 'مدفوعات', 'مصاريف يومية'];
 export const PAYMENT_STATUSES: PaymentStatus[] = ['مدفوعة', 'مدفوعة جزئياً', 'غير مدفوعة'];
 
+// أجهزة قراءة الباركود تعمل كلوحة مفاتيح وقد تُدخل أرقاماً عربية/فارسية بحسب لغة النظام — تُحوَّل هنا إلى أرقام لاتينية
+const NON_LATIN_DIGITS: Record<string, string> = {
+  '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+  '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+};
+
+export function normalizeBarcode(raw: string): string {
+  return raw.replace(/[٠-٩۰-۹]/g, (ch) => NON_LATIN_DIGITS[ch] ?? ch).replace(/\D/g, '');
+}
+
 export interface InvoiceItem {
   key: string;
   productId: string | null;

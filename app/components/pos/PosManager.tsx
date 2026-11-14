@@ -16,6 +16,7 @@ import {
   buildEntryOptions,
   convertUsdToSyp,
   formatMoney,
+  normalizeBarcode,
   optionLabel,
   type EntryOption,
   type Invoice,
@@ -64,7 +65,7 @@ export default function PosManager() {
   }, [toast, notice]);
 
   const addByBarcode = (raw: string) => {
-    const value = raw.trim();
+    const value = normalizeBarcode(raw);
     if (!value) return;
     setError(null);
     const option: EntryOption | undefined = entryOptions.find((entry) => entry.barcode === value);

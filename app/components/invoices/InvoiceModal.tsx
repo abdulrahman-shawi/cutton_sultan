@@ -1,5 +1,5 @@
 // components/invoices/InvoiceModal.tsx — إصدار فاتورة (مقبوضات / مدفوعات / مصاريف يومية) أو تعديل مدفوعاتها
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { AlertCircle, ScanLine, X } from 'lucide-react';
 import CameraScanner from '../../p/CameraScanner';
 import { formatPrice } from '../products/types';
@@ -18,6 +18,7 @@ import {
   createItemDraft,
   currencySymbol,
   formatMoney,
+  normalizeBarcode,
   optionLabel,
   type Invoice,
   type InvoiceItem,
@@ -86,6 +87,8 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [scanInput, setScanInput] = useState('');
+  const scanInputRef = useRef<HTMLInputElement>(null);
   const [exchangeRate, setExchangeRate] = useState(() => {
     const rate = loadDollarRate();
     return rate > 0 ? String(rate) : '';
@@ -228,7 +231,8 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
     );
   };
 
-  const handleScan = (value: string) => {
+  const handleScan = (raw: string) => {
+    const value = normalizeBarcode(raw);
     setScanError('');
     if (!/^\d{13}$/.test(value)) {
       setScanError('الرمز الممسوح ليس باركود منتج — امسح باركود التفصيلة على الملصق');
@@ -270,6 +274,45 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
       ];
     });
   };
+
+  const handleScanRef = useRef(handleScan);
+  handleScanRef.current = handleScan;
+
+  // إرسال ما كتبه قارئ الباركود في حقل الإدخال إلى معالجة المسح
+  const submitScan = () => {
+    const value = scanInput.trim();
+    if (!value) return;
+    handleScan(value);
+    setScanInput('');
+    scanInputRef.current?.focus();
+  };
+
+  // التقاط ضغطات قارئ الباركود (الذي يعمل كلوحة مفاتيح) حتى لو لم يكن حقل الباركود هو المُركَّز عليه
+  useEffect(() => {
+    if (isEdit || isExpense) return;
+    const isFormField = (target: EventTarget | null) =>
+      target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+    const buffer: { text: string; at: number }[] = [];
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isFormField(event.target)) return;
+      const now = Date.now();
+      if (now - (buffer[buffer.length - 1]?.at ?? 0) > 120) buffer.length = 0;
+      if (event.key === 'Enter') {
+        const text = buffer.map((entry) => entry.text).join('');
+        buffer.length = 0;
+        if (text.trim().length >= 6) {
+          event.preventDefault();
+          handleScanRef.current(text);
+        }
+        return;
+      }
+      if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        buffer.push({ text: event.key, at: now });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isEdit, isExpense]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -586,21 +629,48 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
                     </span>
                   )}
                 </span>
-                {!isExpense && (
+              </div>
+              {!isExpense && (
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <ScanLine className="absolute right-3 top-2.5 w-4 h-4 text-slate-300 pointer-events-none" aria-hidden="true" />
+                    <input
+                      ref={scanInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      autoFocus
+                      value={scanInput}
+                      onChange={(event) => setScanInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') return;
+                        event.preventDefault();
+                        submitScan();
+                      }}
+                      placeholder="امسح الباركود بالجهاز أو اكتبه ثم اضغط Enter"
+                      className={`${inputClass} pr-9`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={submitScan}
+                    className="shrink-0 py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                  >
+                    إضافة
+                  </button>
                   <button
                     type="button"
                     onClick={() => setScanning((prev) => !prev)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                    className="shrink-0 flex items-center gap-1.5 py-2.5 px-3 rounded-lg border border-slate-300 text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
                   >
                     <ScanLine className="w-4 h-4" aria-hidden="true" />
-                    {scanning ? 'إخفاء الماسح' : 'مسح باركود'}
+                    {scanning ? 'إخفاء الكاميرا' : 'الكاميرا'}
                   </button>
-                )}
-              </div>
+                </div>
+              )}
+              {scanError && <p className="text-xs text-amber-600 mb-3">{scanError}</p>}
               {scanning && !isExpense && (
                 <div className="mb-3">
                   <CameraScanner onDetected={handleScan} />
-                  {scanError && <p className="text-xs text-amber-600 mt-2">{scanError}</p>}
                 </div>
               )}
 
