@@ -213,6 +213,7 @@ export default function InvoiceModal({ customers, suppliers, products, subcatego
     setType(next);
     setError('');
     setScanning(false);
+    setScanInput('');
     if (next === 'مصاريف يومية') setPartyId('');
     // تحديث أسعار البنود المرتبطة بمنتجات حسب نوع الفاتورة
     setItems((prev) =>
