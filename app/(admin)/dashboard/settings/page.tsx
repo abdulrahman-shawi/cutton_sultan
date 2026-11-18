@@ -1,5 +1,6 @@
 import SettingsForm from '../../../components/settings/SettingsForm';
 import BackupSection from '../../../components/settings/BackupSection';
+import AudioSection from '../../../components/settings/AudioSection';
 
 export const metadata = {
   title: 'الإعدادات | نظام إدارة العملاء',
@@ -21,6 +22,7 @@ export default function SettingsPage() {
 
       <SettingsForm />
       <div className="settings-stack" style={{ marginTop: 20 }}>
+        <AudioSection />
         <BackupSection />
       </div>
     </main>
