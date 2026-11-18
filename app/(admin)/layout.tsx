@@ -7,6 +7,7 @@ import Header from '../components/layout/Header';
 import { getSession, logout, seedDefaultUsers, SESSION_STORAGE_KEY, type Session } from '../components/auth/auth';
 import { AUTH_CHANGED_EVENT, canAccessPath, getDefaultPath } from '../components/auth/permissions';
 import { syncFromServer, installStorageMirror, uploadOfflineBuffer } from '../lib/data';
+import AmbientAudio from '../components/audio/AmbientAudio';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -101,6 +102,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex min-h-screen">
+      <AmbientAudio />
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

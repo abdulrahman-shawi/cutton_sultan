@@ -1,5 +1,6 @@
 // app/shop/ShopCatalog.tsx — واجهة المتجر الإلكتروني العامة بنمط قوالب التجارة (على غرار ثيم Molla):
-// ترويسة ببحث بارز، شريط أقسام، بانر ترحيبي، بطاقات أقسام، شبكة منتجات بعرض سريع،
+// ترويسة ببحث بارز ومفضلة، شريط أقسام، بانر ترحيبي، بطاقات أقسام، شبكة منتجات بعرض سريع
+// وشارات «جديد» وخصم وعدّاد كمية وطلب جاهز بالمحادثة، معرض صور وآراء عملاء وشريط اشتراك،
 // صناديق مزايا، شريط تواصل وفوتر متعدد الأعمدة — البيانات حية من /api/shop بلا تسجيل دخول.
 'use client';
 
@@ -11,13 +12,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  Heart,
   Layers,
   MessageCircle,
+  Minus,
   PackageSearch,
   Percent,
+  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
+  Star,
   Tag,
   X,
 } from 'lucide-react';
@@ -261,6 +266,31 @@ function pushRecentId(id: string): string[] {
   return next;
 }
 
+const WISHLIST_KEY = 'sultan_shop_wishlist';
+
+function readWishlistIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(WISHLIST_KEY) ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// رسالة طلب منتج جاهزة تُملأ في محادثة المتجر من نافذة العرض السريع مع التفصيلة والكمية
+function productInquiryMessage(product: CatalogProduct, subName: string, color: string, size: string, qty: number): string {
+  const variant = [subName, color, size].filter(Boolean).join(' / ');
+  return `مرحباً، أريد طلب «${product.name}» (موديل ${product.modelNumber})${variant ? ` — ${variant}` : ''} — الكمية: ${qty}`;
+}
+
+// آراء عملاء تُعرض في قسم ثابت بالرئيسية
+const TESTIMONIALS: { name: string; text: string; rating: number }[] = [
+  { name: 'أم محمد', text: 'جودة القطن ممتازة والتعامل راقٍ — طلبت عبر المحادثة وكان الرد سريعاً والتجهيز أسرع.', rating: 5 },
+  { name: 'خالد ح.', text: 'الأسعار نفس أسعار المحل تماماً والموديلات محدّثة، والبشاكير أفضل مما توقعت.', rating: 5 },
+  { name: 'ريم س.', text: 'سألتهم عن مقاس معين بالمحادثة فردّوا فوراً وساعدوني بالاختيار. تجربة مريحة فعلاً.', rating: 4 },
+];
+
 // mode = home: واجهة الرابط الأساسي / — نفس هوية المتجر لكن بخمسة منتجات وزر للكتالوج الكامل
 // mode = full: صفحة /shop الكاملة بالبحث والفلاتر — تستقبل ?q= و ?cat= و ?sub= من الصفحة الرئيسية
 export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' }) {
@@ -282,8 +312,13 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [viewedOfferId, setViewedOfferId] = useState<string | null>(null);
+  const [wishlistIds, setWishlistIds] = useState<string[]>([]);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [pickedQty, setPickedQty] = useState(1);
+  const [newsletterName, setNewsletterName] = useState('');
   const productsSectionRef = useRef<HTMLElement>(null);
   const offersSectionRef = useRef<HTMLElement>(null);
+  const favSectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -323,6 +358,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
         const parent = payload.subcategories.find((item) => item.id === sub)?.categoryId;
         if (parent) setCategoryId(parent);
       }
+      if (params.get('fav')) setFavoritesOnly(true);
       if (q || cat || sub) setTimeout(() => scrollToProducts(), 300);
     } catch {
       // بارامترات غير مقروءة — نتجاهلها
@@ -334,6 +370,11 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
   useEffect(() => {
     if (isHome) setRecentIds(readRecentIds());
   }, [isHome]);
+
+  // المفضلة تُحمّل من جهاز العميل في كل دخول للمتجر (الرئيسية والكتالوج)
+  useEffect(() => {
+    setWishlistIds(readWishlistIds());
+  }, []);
 
   // ظهور زر «العودة للأعلى» بعد تمرير بعيد
   useEffect(() => {
@@ -357,6 +398,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     setPickedSub(product ? (uniqueSubcategoryIds(product)[0] ?? '') : '');
     setPickedColor(product ? (uniqueColors(product)[0] ?? '') : '');
     setPickedSize(product ? (uniqueSizes(product)[0] ?? '') : '');
+    setPickedQty(1);
     if (selectedId && isHome) setRecentIds(pushRecentId(selectedId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -372,6 +414,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     if (!payload) return [];
     const query = search.trim().toLowerCase();
     return payload.products.filter((product) => {
+      if (favoritesOnly && !wishlistIds.includes(product.id)) return false;
       if (availableOnly && !isProductAvailable(product)) return false;
       if (categoryId !== 'all' && product.categoryId !== categoryId) return false;
       if (subcategoryId !== 'all' && !product.entries.some((entry) => entry.subcategoryId === subcategoryId)) {
@@ -383,7 +426,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
       }
       return true;
     });
-  }, [payload, search, categoryId, subcategoryId, availableOnly]);
+  }, [payload, search, categoryId, subcategoryId, availableOnly, favoritesOnly, wishlistIds]);
 
   const scrollToProducts = () => {
     productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -482,6 +525,75 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
       .slice(0, 5);
   }, [payload, recentIds]);
 
+  // المنتجات «الجديدة»: الكتالوج مرتب بالأحدث مضافاً أولاً — أول 8 تحمل شارة «جديد» على البطاقة
+  const newProductIds = useMemo(
+    () => new Set((payload?.products ?? []).slice(0, 8).map((product) => product.id)),
+    [payload]
+  );
+
+  // شارات الخصم على البطاقات: أعلى خصم نسبي من العروض النشطة لكل موديل — بالمطابقة برقم الموديل
+  const offerBadgeByModel = useMemo(() => {
+    const map = new Map<string, { percent: number; label: string }>();
+    for (const offer of offers) {
+      for (const item of offer.items) {
+        const model = item.model.trim();
+        if (!model) continue;
+        const percent = offer.discountType === 'percent' ? offer.discountValue : 0;
+        const label = offer.discountType === 'percent' ? `خصم ${offer.discountValue}٪` : 'عرض خاص';
+        const existing = map.get(model);
+        if (!existing || percent > existing.percent) map.set(model, { percent, label });
+      }
+    }
+    return map;
+  }, [offers]);
+
+  // لقطات المعرض في الرئيسية: أول المنتجات ذات الصور الفعلية — تُخفى إن قلّت عن ثلاث
+  const galleryProducts = useMemo(
+    () => (payload?.products ?? []).filter((product) => product.imageUrl).slice(0, 6),
+    [payload]
+  );
+
+  const favoriteProducts = useMemo(() => {
+    const all = payload?.products ?? [];
+    return wishlistIds
+      .map((id) => all.find((product) => product.id === id))
+      .filter((product): product is CatalogProduct => Boolean(product))
+      .slice(0, 5);
+  }, [payload, wishlistIds]);
+
+  // قلب المفضلة على البطاقات: إضافة/إزالة مع الحفظ على جهاز العميل
+  const toggleWishlist = (id: string) => {
+    setWishlistIds((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [id, ...current];
+      try {
+        window.localStorage.setItem(WISHLIST_KEY, JSON.stringify(next));
+      } catch {
+        // التخزين غير متاح
+      }
+      return next;
+    });
+  };
+
+  // زر المفضلة في الترويسة: في الرئيسية ينزل لقسم «مفضلتك»، وفي الكتالوج يرشّح المفضلة محلياً
+  const handleWishlistNav = () => {
+    if (isHome) {
+      if (favoriteProducts.length > 0) favSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else router.push('/shop');
+      return;
+    }
+    setFavoritesOnly((value) => !value);
+    scrollToProducts();
+  };
+
+  // الاشتراك بالنشرة عبر المحادثة: رسالة جاهزة باسم الزائر تُرسل لفريق المحل
+  const subscribeNewsletter = () => {
+    const name = newsletterName.trim();
+    const message = name
+      ? `مرحباً، أنا ${name} — أريد الاشتراك ليصلني جديد العروض والموديلات.`
+      : 'مرحباً، أريد الاشتراك ليصلني جديد العروض والموديلات.';
+    router.push(`/chat?m=${encodeURIComponent(message)}`);
+  };
+
   const runSlideAction = (action: 'scroll' | 'chat' | 'offers') => {
     if (action === 'chat') router.push('/chat');
     else if (action === 'offers') offersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -531,6 +643,10 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
   const sizeHasStock = (size: string) =>
     Boolean(selected?.entries.some((entry) => entry.size.trim() === size && entry.quantity > 0));
 
+  // سقف الكمية في عداد الطلب: أكبر رصيد مطابق للتفصيلة المختارة — وبلا رصيد يبقى الاستفسار مفتوح الكمية
+  const maxQty = variantRows.length > 0 ? Math.max(...variantRows.map((row) => row.quantity)) : 0;
+  const clampedQty = maxQty > 0 ? Math.min(pickedQty, maxQty) : pickedQty;
+
   // العرض (التخفيض) المفتوح في نافذة التفاصيل وأسعاره المحسوبة بالليرة
   const viewedOffer = viewedOfferId ? (offers.find((offer) => offer.id === viewedOfferId) ?? null) : null;
   const viewedPricing = viewedOffer ? offerPricing(viewedOffer, sypRate) : null;
@@ -545,7 +661,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           key={category.id}
           type="button"
           onClick={() => pickCategory(category.id)}
-          className="shrink-0 flex items-center gap-3 bg-white border px-5 py-3.5 transition-shadow hover:shadow-md"
+          className="shrink-0 flex items-center gap-3 bg-white border rounded-xl px-5 py-3.5 transition-shadow hover:shadow-md"
           style={{ borderColor: LINE }}
         >
           <span
@@ -568,7 +684,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           key={brand.id}
           type="button"
           onClick={() => router.push(`/shop?sub=${encodeURIComponent(brand.id)}`)}
-          className="shrink-0 flex items-center gap-3 bg-white border px-5 py-3.5 transition-shadow hover:shadow-md"
+          className="shrink-0 flex items-center gap-3 bg-white border rounded-xl px-5 py-3.5 transition-shadow hover:shadow-md"
           style={{ borderColor: LINE }}
         >
           <span
@@ -591,10 +707,13 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
     const available = isProductAvailable(product);
     const prices = priceLabel(product, sypRate);
     const colors = uniqueColors(product);
+    const wishlisted = wishlistIds.includes(product.id);
+    const offerBadge = offerBadgeByModel.get(product.modelNumber.trim())?.label;
+    const isNew = newProductIds.has(product.id);
     return (
       <article
         key={product.id}
-        className="group relative bg-white border overflow-hidden transition-shadow hover:shadow-lg"
+        className="group relative bg-white border overflow-hidden rounded-2xl transition-all hover:shadow-lg hover:-translate-y-1"
         style={{ borderColor: LINE }}
       >
         <div className="relative overflow-hidden">
@@ -609,11 +728,37 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
               className="aspect-square w-full transition-transform duration-500 group-hover:scale-105"
             />
           </button>
-          {!available && (
-            <span className="absolute top-3 right-3 bg-slate-900/80 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm">
-              غير متوفر
-            </span>
+          {/* شارات البطاقة مكدّسة: خصم العرض ثم «جديد» ثم نفاد الكمية */}
+          {(offerBadge || isNew || !available) && (
+            <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+              {offerBadge && (
+                <span className="bg-rose-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm">
+                  {offerBadge}
+                </span>
+              )}
+              {isNew && (
+                <span className="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm">
+                  جديد
+                </span>
+              )}
+              {!available && (
+                <span className="bg-slate-900/80 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm">
+                  غير متوفر
+                </span>
+              )}
+            </div>
           )}
+          {/* قلب المفضلة — يُحفظ على جهاز العميل ويظهر عداده في الترويسة */}
+          <button
+            type="button"
+            onClick={() => toggleWishlist(product.id)}
+            aria-label={wishlisted ? `أزل ${product.name} من المفضلة` : `أضف ${product.name} إلى المفضلة`}
+            aria-pressed={wishlisted}
+            className="absolute top-3 left-3 w-9 h-9 rounded-full bg-white/95 backdrop-blur border shadow-sm grid place-items-center transition-transform hover:scale-110"
+            style={{ borderColor: LINE, color: wishlisted ? '#f43f5e' : '#9aa0b0' }}
+          >
+            <Heart className="w-4 h-4" style={wishlisted ? { fill: '#f43f5e' } : undefined} aria-hidden="true" />
+          </button>
           {/* شريط الإجراء عند التحويم — العرض السريع مثبّت أسفل الصورة على غرار قوالب Molla */}
           <div className="absolute inset-x-3 bottom-3 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
             <button
@@ -744,6 +889,29 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           </div>
 
           <div className="flex items-center gap-2 order-2 sm:order-3 mr-auto sm:mr-0">
+            {/* زر المفضلة بعدّاد — في الرئيسية ينزل لقسمها وفي الكتالوج يرشّحها */}
+            <button
+              type="button"
+              onClick={handleWishlistNav}
+              aria-label={`المفضلة — ${wishlistIds.length} منتج`}
+              className="relative w-11 h-11 rounded-full border grid place-items-center transition-colors hover:border-rose-200"
+              style={{
+                borderColor: LINE,
+                color: wishlistIds.length > 0 ? '#f43f5e' : '#6b6d84',
+                background: !isHome && favoritesOnly ? '#f43f5e14' : '#fff',
+              }}
+            >
+              <Heart
+                className="w-5 h-5"
+                style={wishlistIds.length > 0 ? { fill: '#f43f5e' } : undefined}
+                aria-hidden="true"
+              />
+              {wishlistIds.length > 0 && (
+                <span className="absolute -top-1 -left-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold grid place-items-center">
+                  {wishlistIds.length}
+                </span>
+              )}
+            </button>
             <Link
               href="/chat"
               className="flex items-center gap-2 text-sm font-semibold text-white px-5 py-3 rounded-full transition-opacity hover:opacity-90"
@@ -976,7 +1144,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
                   key={offer.id}
                   type="button"
                   onClick={() => setViewedOfferId(offer.id)}
-                  className="relative bg-white border overflow-hidden p-6 text-right transition-shadow hover:shadow-lg"
+                  className="relative bg-white border overflow-hidden rounded-2xl p-6 text-right transition-shadow hover:shadow-lg"
                   style={{ borderColor: LINE }}
                 >
                   <span
@@ -1099,7 +1267,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
               }`}
             >
               {Array.from({ length: isHome ? 5 : 10 }).map((_, index) => (
-                <div key={index} className="bg-white border" style={{ borderColor: LINE }}>
+                <div key={index} className="bg-white border rounded-2xl overflow-hidden" style={{ borderColor: LINE }}>
                   <div className="aspect-square bg-slate-100 animate-pulse" />
                   <div className="p-3.5 space-y-2">
                     <div className="h-3 rounded bg-slate-100 animate-pulse w-1/3" />
@@ -1161,8 +1329,12 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
             )
           ) : filteredProducts.length === 0 ? (
             <StateBox
-              title="لا توجد نتائج مطابقة"
-              hint="جرّب توسيع البحث أو إلغاء الفلاتر."
+              title={favoritesOnly ? 'لا توجد منتجات في المفضلة بعد' : 'لا توجد نتائج مطابقة'}
+              hint={
+                favoritesOnly
+                  ? 'اضغط على القلب في أي بطاقة منتج لإضافتها إلى مفضلتك.'
+                  : 'جرّب توسيع البحث أو إلغاء الفلاتر.'
+              }
               action={
                 <button
                   type="button"
@@ -1171,6 +1343,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
                     setCategoryId('all');
                     setSubcategoryId('all');
                     setAvailableOnly(false);
+                    setFavoritesOnly(false);
                   }}
                   className="text-sm font-semibold text-white px-5 py-2.5 rounded-full"
                   style={{ background: PURPLE }}
@@ -1186,6 +1359,80 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           )}
         </section>
 
+        {/* معرض صور من المنتجات — الرئيسية فقط، ويُخفى إن قلّت الصور عن ثلاث */}
+        {isHome && galleryProducts.length >= 3 && (
+          <section className="pb-12">
+            <div className="flex items-end justify-between mb-6">
+              <div>
+                <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                  من متجرنا
+                </p>
+                <h2 className="text-2xl font-bold text-slate-900">تصفح بعينك</h2>
+              </div>
+              {payload?.socialLink && (
+                <a
+                  href={payload.socialLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-sm font-semibold transition-opacity hover:opacity-80"
+                  style={{ color: PURPLE }}
+                >
+                  تابعنا للمزيد
+                  <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+                </a>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {galleryProducts.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => setSelectedId(product.id)}
+                  className="group relative overflow-hidden rounded-2xl"
+                  aria-label={`عرض ${product.name}`}
+                >
+                  <img
+                    src={product.imageUrl}
+                    alt={product.name}
+                    loading="lazy"
+                    className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <span className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
+                    <span className="text-white text-xs font-semibold text-right line-clamp-2">{product.name}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* مفضلتك — المنتجات التي قلبها الزائر، محفوظة على جهازه */}
+        {isHome && favoriteProducts.length > 0 && (
+          <section ref={favSectionRef} className="pb-12 scroll-mt-32">
+            <div className="flex items-end justify-between mb-5">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <Heart className="w-5 h-5" style={{ color: '#f43f5e', fill: '#f43f5e' }} aria-hidden="true" />
+                مفضلتك
+              </h2>
+              <button
+                type="button"
+                onClick={() => router.push('/shop?fav=1')}
+                className="text-sm font-semibold transition-opacity hover:opacity-80"
+                style={{ color: PURPLE }}
+              >
+                عرضها في الكتالوج
+              </button>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {favoriteProducts.map((product) => (
+                <div key={product.id} className="w-44 sm:w-52 shrink-0">
+                  {renderProductCard(product)}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* شوهد مؤخراً — من جهاز العميل نفسه */}
         {isHome && recentProducts.length > 0 && (
           <section className="pb-12">
@@ -1200,9 +1447,39 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           </section>
         )}
 
+        {/* آراء العملاء — الرئيسية فقط */}
+        {isHome && (
+          <section className="pb-12">
+            <div className="text-center mb-8">
+              <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                آراء عملائنا
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900">ماذا قالوا عنا؟</h2>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-4">
+              {TESTIMONIALS.map((item) => (
+                <figure key={item.name} className="bg-white border rounded-2xl p-6" style={{ borderColor: LINE }}>
+                  <div className="flex items-center gap-1 mb-3" aria-label={`التقييم ${item.rating} من 5`}>
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <Star
+                        key={index}
+                        className="w-4 h-4"
+                        aria-hidden="true"
+                        style={index < item.rating ? { color: '#f59e0b', fill: '#f59e0b' } : { color: '#d6d8e2' }}
+                      />
+                    ))}
+                  </div>
+                  <blockquote className="text-sm text-slate-600 leading-relaxed mb-4">{item.text}</blockquote>
+                  <figcaption className="text-sm font-bold text-slate-900">{item.name}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* صناديق المزايا */}
         <section className="border-t py-10" style={{ borderColor: LINE }}>
-          <div className="grid sm:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <FeatureBox
               icon={<Tag className="w-6 h-6" style={{ color: PURPLE }} aria-hidden="true" />}
               title="أسعار محدّثة من المحل"
@@ -1218,9 +1495,54 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
               title="طلب مباشر بالمحادثة"
               text="اختر ما يعجبك واطلبه فوراً عبر محادثة المتجر وسنؤكده معك."
             />
+            <FeatureBox
+              icon={<Percent className="w-6 h-6" style={{ color: PURPLE }} aria-hidden="true" />}
+              title="عروض وخصومات دورية"
+              text="تابع قسم العروض والشريط المتحرك لتلحق بأقوى الخصومات فور صدورها."
+            />
           </div>
         </section>
       </main>
+
+      {/* شريط الاشتراك بجديد العروض — الاشتراك يتم عبر محادثة المتجر نفسها (الرئيسية فقط) */}
+      {isHome && (
+        <section className="bg-white border-t" style={{ borderColor: LINE }}>
+          <div className="max-w-7xl mx-auto px-4 py-12 grid md:grid-cols-2 items-center gap-6">
+            <div>
+              <p className="text-xs font-bold tracking-widest mb-1" style={{ color: PURPLE }}>
+                كل جديدنا أولاً بأول
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900 mb-1.5">ليصلك جديد العروض والموديلات</h2>
+              <p className="text-sm text-slate-500">اترك اسمك وسنوافيك بالجديد عبر محادثة المتجر — بلا إيميلات وبلا إزعاج.</p>
+            </div>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                subscribeNewsletter();
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={newsletterName}
+                onChange={(event) => setNewsletterName(event.target.value)}
+                placeholder="اسمك الكريم"
+                aria-label="اسمك للاشتراك"
+                className="flex-1 min-w-0 rounded-full border bg-slate-50 px-5 py-3 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition"
+                style={{ borderColor: LINE, '--tw-ring-color': PURPLE } as React.CSSProperties}
+              />
+              <button
+                type="submit"
+                className="shrink-0 flex items-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-full transition-opacity hover:opacity-90"
+                style={{ background: PURPLE }}
+              >
+                <MessageCircle className="w-4 h-4" aria-hidden="true" />
+                اشترك
+              </button>
+            </form>
+          </div>
+        </section>
+      )}
 
       {/* شريط التواصل */}
       <section className="py-14" style={{ background: `linear-gradient(120deg, ${PURPLE_DARK}, ${PURPLE})` }}>
@@ -1334,7 +1656,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
       {viewedOffer && viewedPricing && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={() => setViewedOfferId(null)} />
-          <div role="dialog" aria-modal="true" className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-white shadow-2xl sm:rounded-2xl">
             <button
               type="button"
               onClick={() => setViewedOfferId(null)}
@@ -1441,7 +1763,7 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
           <div
             role="dialog"
             aria-modal="true"
-            className="relative w-full sm:max-w-3xl max-h-[92vh] overflow-y-auto bg-white shadow-2xl"
+            className="relative w-full sm:max-w-3xl max-h-[92vh] overflow-y-auto bg-white shadow-2xl sm:rounded-2xl"
           >
             <button
               type="button"
@@ -1609,14 +1931,47 @@ export default function ShopCatalog({ mode = 'full' }: { mode?: 'home' | 'full' 
                   )}
                 </div>
 
+                {/* عداد الكمية — يُقفل على سقف الرصيد ويُرفق مع رسالة الطلب في المحادثة */}
+                <div className="mt-6 flex items-center justify-between gap-3">
+                  <span className="text-sm font-bold text-slate-900">الكمية المطلوبة</span>
+                  <div className="flex items-center border rounded-full" style={{ borderColor: LINE }}>
+                    <button
+                      type="button"
+                      onClick={() => setPickedQty((qty) => Math.min(qty + 1, maxQty > 0 ? maxQty : 99))}
+                      aria-label="زيادة الكمية"
+                      disabled={maxQty > 0 && clampedQty >= maxQty}
+                      className="w-9 h-9 grid place-items-center text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
+                    >
+                      <Plus className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                    <span className="w-8 text-center text-sm font-bold text-slate-900">{clampedQty}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPickedQty((qty) => Math.max(qty - 1, 1))}
+                      aria-label="إنقاص الكمية"
+                      disabled={clampedQty <= 1}
+                      className="w-9 h-9 grid place-items-center text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
+                    >
+                      <Minus className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                {maxQty > 0 && clampedQty >= maxQty && (
+                  <p className="text-[11px] text-amber-600 mt-1.5 text-left">وصلت لسقف الكمية المتوفرة من هذه التفصيلة</p>
+                )}
+
+                {/* زر الطلب: يفتح المحادثة وقد كتبنا رسالة الطلب بالمنتج والتفصيلة والكمية تلقائياً */}
                 <Link
-                  href="/chat"
-                  className="mt-6 flex items-center justify-center gap-2 w-full py-3.5 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  href={`/chat?m=${encodeURIComponent(productInquiryMessage(selected, subcategoryNameOf(pickedSub), pickedColor, pickedSize, clampedQty))}`}
+                  className="mt-4 flex items-center justify-center gap-2 w-full py-3.5 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: PURPLE }}
                 >
                   <MessageCircle className="w-4 h-4" aria-hidden="true" />
-                  للطلب أو الاستفسار تحدث معنا
+                  اطلب الآن بالمحادثة
                 </Link>
+                <p className="text-[11px] text-slate-400 mt-2.5 text-center">
+                  سنفتح محادثة المتجر وقد كتبنا لك رسالة الطلب تلقائياً — أرسلها كما هي أو عدّلها.
+                </p>
               </div>
             </div>
           </div>
@@ -1657,7 +2012,10 @@ function TabChip({
 
 function FeatureBox({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
   return (
-    <div className="flex items-start gap-4 bg-white border p-5" style={{ borderColor: LINE }}>
+    <div
+      className="flex items-start gap-4 bg-white border rounded-2xl p-5 transition-shadow hover:shadow-md"
+      style={{ borderColor: LINE }}
+    >
       <span className="shrink-0 w-12 h-12 grid place-items-center rounded-full" style={{ background: `${PURPLE}14` }}>
         {icon}
       </span>
@@ -1679,7 +2037,10 @@ function StateBox({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="bg-white border py-20 px-6 flex flex-col items-center justify-center text-center" style={{ borderColor: LINE }}>
+    <div
+      className="bg-white border rounded-2xl py-20 px-6 flex flex-col items-center justify-center text-center"
+      style={{ borderColor: LINE }}
+    >
       <PackageSearch className="w-10 h-10 text-slate-300 mb-3" aria-hidden="true" />
       <p className="font-bold text-slate-900 mb-1">{title}</p>
       <p className="text-sm text-slate-400 mb-5">{hint}</p>
