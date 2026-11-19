@@ -7,6 +7,10 @@ import { getSessionUser } from '../../../lib/server/auth';
 // لأن متصفحات الجوال كثيراً ما ترسل نوع MIME فارغاً أو غير دقيق فيُرفض ملف صوتي سليم
 const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.wav', '.ogg', '.oga', '.opus', '.aac', '.webm', '.amr', '.flac', '.3gp', '.mp4'];
 
+// 500 م.ب — تكفي للمقاطع الطويلة (سورة البقرة كاملة ~140 م.ب). الرفع مباشر من المتصفح إلى المخزن
+// ومجزّأ (multipart) للملفات الكبيرة، فلا يمر عبر حدود حجم طلبات الخادم
+const MAX_SIZE_BYTES = 500 * 1024 * 1024;
+
 export async function POST(request: Request) {
   const body = (await request.json()) as HandleUploadBody;
   try {
@@ -22,7 +26,7 @@ export async function POST(request: Request) {
           throw new Error(`صيغة الملف «${ext || 'غير معروفة'}» غير مدعومة — ارفع ملفاً صوتياً (MP3 / M4A / WAV / OGG)`);
         }
         return {
-          maximumSizeInBytes: 100 * 1024 * 1024,
+          maximumSizeInBytes: MAX_SIZE_BYTES,
           addRandomSuffix: true,
         };
       },
