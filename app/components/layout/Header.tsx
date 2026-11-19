@@ -1,7 +1,9 @@
 // components/layout/Header.tsx
 'use client';
 
-import { LogOut, Menu, Search, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Loader2, LogOut, Menu, Music, Pause, Search, User } from 'lucide-react';
+import { QURAN_STATE_EVENT, QURAN_TOGGLE_EVENT, type QuranAudioStatus } from '../audio/events';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -11,6 +13,29 @@ interface HeaderProps {
 }
 
 export default function Header({ onMenuClick, userName, userRole, onLogout }: HeaderProps) {
+  const [audioStatus, setAudioStatus] = useState<QuranAudioStatus>('loading');
+
+  // حالة مشغّل مقطع القرآن (يبثها AmbientAudio) لعرض الأيقونة المناسبة
+  useEffect(() => {
+    const handleState = (event: Event) => {
+      setAudioStatus((event as CustomEvent<QuranAudioStatus>).detail);
+    };
+    window.addEventListener(QURAN_STATE_EVENT, handleState);
+    return () => window.removeEventListener(QURAN_STATE_EVENT, handleState);
+  }, []);
+
+  const toggleQuranAudio = () => {
+    window.dispatchEvent(new Event(QURAN_TOGGLE_EVENT));
+  };
+
+  const playing = audioStatus === 'playing';
+  const audioTitle =
+    audioStatus === 'loading'
+      ? 'جارٍ تجهيز مقطع القرآن…'
+      : playing
+        ? 'إيقاف مؤقت لمقطع القرآن'
+        : 'تشغيل مقطع القرآن';
+
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-4 lg:px-6 flex items-center justify-between gap-3">
       <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -33,6 +58,25 @@ export default function Header({ onMenuClick, userName, userRole, onLogout }: He
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
+        <button
+          type="button"
+          onClick={toggleQuranAudio}
+          title={audioTitle}
+          aria-label={audioTitle}
+          className={`p-2 rounded-lg transition-colors ${
+            playing
+              ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+              : 'text-slate-500 hover:bg-slate-100'
+          }`}
+        >
+          {audioStatus === 'loading' ? (
+            <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+          ) : playing ? (
+            <Pause className="w-5 h-5" aria-hidden="true" />
+          ) : (
+            <Music className="w-5 h-5" aria-hidden="true" />
+          )}
+        </button>
         <div className="flex items-center gap-3 border-r pr-3 border-slate-200">
           <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
             <User className="w-4 h-4" aria-hidden="true" />
