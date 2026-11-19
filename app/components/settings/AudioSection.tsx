@@ -9,6 +9,9 @@ import { usePermissions } from '../auth/usePermissions';
 type Clip = { url: string; pathname: string; name: string; size: number; uploadedAt: string };
 type Feedback = { kind: 'success' | 'error'; message: string } | null;
 
+// نفس حد الخادم في app/api/audio/upload/route.ts — فحص مبكر برسالة واضحة قبل بدء الرفع
+const MAX_SIZE_BYTES = 500 * 1024 * 1024;
+
 const formatSize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} م.ب` : `${Math.max(1, Math.round(bytes / 1024))} ك.ب`;
 
@@ -46,11 +49,20 @@ export default function AudioSection() {
 
   const handleUploadFile = async (file: File) => {
     setFeedback(null);
+    if (file.size > MAX_SIZE_BYTES) {
+      setFeedback({
+        kind: 'error',
+        message: `حجم «${file.name}» هو ${formatSize(file.size)} ويتجاوز الحد الأقصى 500 م.ب — ارفع نسخة أقصر أو مضغوطة`,
+      });
+      return;
+    }
     setUploading(true);
     try {
       await upload(`quran-audio/${file.name}`, file, {
         access: 'public',
         handleUploadUrl: '/api/audio/upload',
+        // الرفع المجزّأ أثبت للملفات الكبيرة (مقاطع السور الطويلة) على الشبكات المتقطعة
+        multipart: file.size > 50 * 1024 * 1024,
       });
       setFeedback({ kind: 'success', message: `تم رفع «${file.name}» — سيُشغَّل تلقائياً عند فتح لوحة التحكم` });
       await refresh();
