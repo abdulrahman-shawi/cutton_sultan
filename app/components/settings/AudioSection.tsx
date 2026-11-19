@@ -54,8 +54,10 @@ export default function AudioSection() {
       });
       setFeedback({ kind: 'success', message: `تم رفع «${file.name}» — سيُشغَّل تلقائياً عند فتح لوحة التحكم` });
       await refresh();
-    } catch {
-      setFeedback({ kind: 'error', message: 'فشل رفع المقطع — تأكد من الاتصال ومن إعداد المخزن' });
+    } catch (error) {
+      // نظهر سبب الفشل الحقيقي من الخادم/المكتبة (توكن مفقود، صيغة مرفوضة، انتهت الجلسة…) بدل الرسالة العامة وحدها
+      const detail = error instanceof Error && error.message ? ` — السبب: ${error.message}` : '';
+      setFeedback({ kind: 'error', message: `فشل رفع المقطع${detail}` });
     } finally {
       setUploading(false);
     }
