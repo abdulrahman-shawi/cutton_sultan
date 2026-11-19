@@ -3,26 +3,25 @@ import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '../../../lib/server/auth';
 
+// امتدادات الملفات الصوتية المقبولة — نتحقق من الامتداد بدلاً من قائمة MIME الصارمة،
+// لأن متصفحات الجوال كثيراً ما ترسل نوع MIME فارغاً أو غير دقيق فيُرفض ملف صوتي سليم
+const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.wav', '.ogg', '.oga', '.opus', '.aac', '.webm', '.amr', '.flac', '.3gp', '.mp4'];
+
 export async function POST(request: Request) {
   const body = (await request.json()) as HandleUploadBody;
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async () => {
+      onBeforeGenerateToken: async (pathname) => {
         const user = await getSessionUser();
-        if (!user) throw new Error('غير مسجل الدخول');
+        if (!user) throw new Error('غير مسجل الدخول — أعد تسجيل الدخول ثم حاول مجدداً');
+        const dotIndex = pathname.lastIndexOf('.');
+        const ext = dotIndex === -1 ? '' : pathname.slice(dotIndex).toLowerCase();
+        if (!AUDIO_EXTENSIONS.includes(ext)) {
+          throw new Error(`صيغة الملف «${ext || 'غير معروفة'}» غير مدعومة — ارفع ملفاً صوتياً (MP3 / M4A / WAV / OGG)`);
+        }
         return {
-          allowedContentTypes: [
-            'audio/mpeg',
-            'audio/mp4',
-            'audio/x-m4a',
-            'audio/wav',
-            'audio/x-wav',
-            'audio/ogg',
-            'audio/webm',
-            'audio/aac',
-          ],
           maximumSizeInBytes: 100 * 1024 * 1024,
           addRandomSuffix: true,
         };
@@ -33,6 +32,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(jsonResponse);
   } catch (error) {
+    console.error('audio upload error:', error);
     const message = error instanceof Error ? error.message : 'فشل الرفع';
     return NextResponse.json({ error: message }, { status: 400 });
   }
